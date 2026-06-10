@@ -10,7 +10,7 @@
             padding: 0;
             overflow: hidden;
             background-color: #111111;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
         #canvas-container {
             width: 100vw;
@@ -56,13 +56,14 @@
             left: 50%;
             transform: translate(-50%, -50%);
             color: white;
-            background: rgba(0,0,0,0.8);
-            padding: 15px 30px;
-            border-radius: 8px;
+            background: rgba(0,0,0,0.85);
+            padding: 20px 40px;
+            border-radius: 12px;
             display: none;
             z-index: 9;
             font-weight: bold;
             text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
     </style>
     <script type="importmap">
@@ -83,7 +84,11 @@
         <input type="file" id="file-input" accept=".ply,.splat">
     </div>
 
-    <div id="loading-info">Memproses & merender file...<br><span style="font-size:12px; font-weight:normal; color:#aaa;">Mohon tunggu sejenak</span></div>
+    <div id="loading-info">
+        Memproses & merender file...<br>
+        <span style="font-size:12px; font-weight:normal; color:#aaa;">Mohon tunggu sejenak</span>
+    </div>
+    
     <div id="canvas-container"></div>
 
     <script type="module">
@@ -102,32 +107,34 @@
             uploadPanel.style.display = 'none';
             loadingInfo.style.display = 'block';
 
-            // Optimasi khusus untuk Mobile/iPad Safari:
-            // Matikan shared memory & workers agar tidak terblokir kebijakan security Safari
+            // Inisialisasi Viewer dengan setelan paling kompatibel untuk Safari iOS
             if (!viewer) {
                 viewer = new GaussianSplats3D.Viewer({
                     'cameraUp': [0, 1, 0],
                     'initialCameraPosition': [0, 1, 3],
                     'initialCameraLookAt': [0, 0, 0],
-                    'halfPrecisionChunks': true, // Menghemat RAM iPad
-                    'sharedMemoryForWorkers': false, // WAJIB FALSE untuk Safari
+                    'halfPrecisionChunks': true,      // Menghemat memori grafis iOS
+                    'sharedMemoryForWorkers': false,  // Nonaktifkan fitur yang dilarang Safari
+                    'integerBasedSplats': true,       // Mode kompatibilitas tinggi
                     'useBuiltInControls': true
                 });
             }
 
             const fileURL = URL.createObjectURL(file);
 
+            // Tambahkan scene ke viewer
             viewer.addSplatScene(fileURL, {
                 'splatAlphaRemovalThreshold': 5,
-                'showLoadingUI': false
+                'showLoadingUI': false,
+                'format': file.name.endsWith('.splat') ? 'splat' : 'ply' // Deteksi format eksplisit
             })
             .then(() => {
-                loadingInfo.style.style.display = 'none'; // Sembunyikan loading
+                loadingInfo.style.display = 'none'; // FIX: Typo ganda dibersihkan di sini
                 viewer.start();
             })
             .catch((error) => {
-                console.error(error);
-                alert("Gagal memuat file: " + error.message);
+                console.error("Detail Error:", error);
+                alert("Gagal merender file. Pastikan file adalah 3D Gaussian Splat (bukan PLY mesh biasa).\n\nError: " + error.message);
                 uploadPanel.style.display = 'block';
                 loadingInfo.style.display = 'none';
             });
@@ -139,7 +146,7 @@
             }
         });
 
-        // Supaya tidak error saat drag-drop diabaikan di iPad
+        // Mencegah konflik gesture bawaan browser di iPad
         window.addEventListener('dragover', (e) => e.preventDefault());
         window.addEventListener('drop', (e) => e.preventDefault());
     </script>
