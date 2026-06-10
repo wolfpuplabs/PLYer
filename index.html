@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3DGS Mobile Viewer</title>
+    <title>3DGS iPad Viewer</title>
     <style>
         body {
             margin: 0;
@@ -65,30 +65,41 @@
             text-align: center;
         }
     </style>
-    <script type="module" src="https://unpkg.com/@lumaai/luma-webgl@0.2.0/dist/library/luma-webgl.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "@mkkellogg/gaussian-splats-3d": "https://unpkg.com/@mkkellogg/gaussian-splats-3d@0.4.2/build/gaussian-splats-3d.module.js"
+            }
+        }
+    </script>
 </head>
 <body>
 
     <div id="upload-panel">
-        <h2 style="margin-top:0;">Luma PLY Viewer</h2>
-        <p>Pilih file .ply Gaussian Splatting</p>
+        <h2 style="margin-top:0;">3DGS iPad Viewer</h2>
+        <p>Pilih file <b>.ply</b> atau <b>.splat</b> kamu</p>
         <label for="file-input" class="upload-btn">Pilih File</label>
-        <input type="file" id="file-input" accept=".ply">
+        <input type="file" id="file-input" accept=".ply,.splat">
     </div>
 
     <div id="loading-info">
-        Merender Objek 3D...<br>
-        <span style="font-size:12px; font-weight:normal; color:#aaa;">Memakan waktu beberapa detik di iPad</span>
+        Membaca data file...<br>
+        <span id="progress-text" style="font-size:12px; font-weight:normal; color:#aaa;">Memuat memori grafis...</span>
     </div>
     
     <div id="canvas-container"></div>
 
     <script type="module">
-        // Pastikan library Luma terisi
+        import * as THREE from 'three';
+        import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
+
         const uploadPanel = document.getElementById('upload-panel');
         const fileInput = document.getElementById('file-input');
         const loadingInfo = document.getElementById('loading-info');
-        const container = document.getElementById('canvas-container');
+        const progressText = document.getElementById('progress-text');
+        
+        let viewer = null;
 
         function handleFile(file) {
             if (!file) return;
@@ -96,31 +107,49 @@
             uploadPanel.style.display = 'none';
             loadingInfo.style.display = 'block';
 
-            const fileURL = URL.createObjectURL(file);
+            // Gunakan FileReader untuk membaca file mentah langsung ke ArrayBuffer lokal
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const arrayBuffer = e.target.result;
+                progressText.innerText = "Mengurai data 3D Splatting...";
 
-            // Inisialisasi Luma WebGL Viewer (Sangat ringan untuk iOS)
-            try {
-                const viewer = new LumaGL.SplatViewer({
-                    container: container,
-                    source: fileURL,
-                    renderingArgs: {
-                        enableAntialiasing: false // Matikan demi performa iPad
-                    }
-                });
+                // Bangun viewer jika belum ada
+                if (!viewer) {
+                    viewer = new GaussianSplats3D.Viewer({
+                        'cameraUp': [0, 1, 0],
+                        'initialCameraPosition': [0, 1, 3],
+                        'initialCameraLookAt': [0, 0, 0],
+                        'halfPrecisionChunks': true,     // Sangat penting untuk menghemat RAM iPad
+                        'sharedMemoryForWorkers': false, // Wajib mati di iOS
+                        'useBuiltInControls': true
+                    });
+                }
 
-                viewer.onLoad = () => {
+                // Masukkan ArrayBuffer secara langsung tanpa internal fetch
+                const isSplat = file.name.endsWith('.splat');
+                
+                viewer.addSplatScenes([{
+                    'data': arrayBuffer,
+                    'format': isSplat ? 'splat' : 'ply'
+                }])
+                .then(() => {
                     loadingInfo.style.display = 'none';
-                };
-
-                viewer.onError = (err) => {
-                    alert("Error: " + err);
+                    viewer.start();
+                })
+                .catch((error) => {
+                    alert("Gagal merender data: " + error.message);
                     resetUI();
-                };
+                });
+            };
 
-            } catch (e) {
-                alert("Browser ini tidak mendukung WebGL2 secara penuh.");
+            reader.onerror = function() {
+                alert("Gagal membaca file dari penyimpanan iPad.");
                 resetUI();
-            }
+            };
+
+            // Mulai membaca file
+            reader.readAsArrayBuffer(file);
         }
 
         function resetUI() {
