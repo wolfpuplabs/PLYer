@@ -226,6 +226,22 @@
         </div>
 
         <div class="group">
+          <div class="group-title">Load pipeline</div>
+          <div class="field">
+            <label class="lbl" for="loadMode">On loading a .ply / .splat</label>
+            <select id="loadMode">
+              <option value="1" selected>Convert → KSPLAT · 16-bit (faster view)</option>
+              <option value="2">Convert → KSPLAT · 8-bit (smallest)</option>
+              <option value="0">View raw (no conversion)</option>
+            </select>
+            <div class="hint">Auto-compresses on upload so big scenes load &amp; render faster. .ksplat/.splat are used as-is.</div>
+          </div>
+          <div class="presets">
+            <button class="chip" id="chipSaveKsplat">⤓ Also save .ksplat</button>
+          </div>
+        </div>
+
+        <div class="group">
           <div class="group-title">Render options</div>
           <div class="field">
             <label class="lbl" for="viewSH">Spherical harmonics</label>
@@ -479,12 +495,13 @@ function hideLoading(){ loadOverlay.classList.remove('show'); }
 
 function parseVec3(str,fb){const p=str.split(',').map(s=>parseFloat(s.trim()));return (p.length===3&&p.every(n=>!isNaN(n)))?p:fb;}
 
-function bufferFromFile(file, sh){
+function bufferFromFile(file, sh, compress){
   const fmt=formatFromName(file.name);
+  const c=(compress==null?1:compress);
   return file.arrayBuffer().then(data=>{
-    if(fmt===SF.Ply)  return GaussianSplats3D.PlyLoader.loadFromFileData(data,0,0,true,sh,0,new THREE.Vector3(),undefined,undefined);
-    if(fmt===SF.Splat)return GaussianSplats3D.SplatLoader.loadFromFileData(data,0,0,true,0,new THREE.Vector3(),undefined,undefined);
-    if(fmt===SF.KSplat)return GaussianSplats3D.KSplatLoader.loadFromFileData(data);
+    if(fmt===SF.Ply)  return GaussianSplats3D.PlyLoader.loadFromFileData(data,0,c,true,sh,0,new THREE.Vector3(),undefined,undefined);
+    if(fmt===SF.Splat)return GaussianSplats3D.SplatLoader.loadFromFileData(data,0,c,true,0,new THREE.Vector3(),undefined,undefined);
+    if(fmt===SF.KSplat)return GaussianSplats3D.KSplatLoader.loadFromFileData(data);  // already compressed
     throw new Error('unsupported file: '+file.name);
   });
 }
@@ -494,17 +511,29 @@ async function addFiles(fileList){
   if(!files.length){ setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.','err'); return; }
   if(layers.length===0) didAutoLevel=false;   // a fresh scene should auto-level on load
   const sh=parseInt($('viewSH').value,10); shCache=sh;
-  showLoading('Parsing splats','reading & packing');
-  setViewStatus('Parsing '+files.length+' file(s)…','warn');
+  const compress=parseInt($('loadMode').value,10);
+  const save=$('chipSaveKsplat').classList.contains('active');
   try{
     for(const file of files){
-      const buffer=await bufferFromFile(file, sh);
-      layers.push({id:nextId++, file, name:file.name, buffer, count:buffer.getSplatCount(),
+      const fmt=formatFromName(file.name);
+      const willConvert = compress>0 && (fmt===SF.Ply||fmt===SF.Splat);
+      showLoading(willConvert?'Converting → KSPLAT':'Loading splats', file.name);
+      const buffer=await bufferFromFile(file, sh, compress);
+      const count=buffer.getSplatCount();
+      layers.push({id:nextId++, file, name:file.name, buffer, count,
                    hidden:false, pos:[0,0,0], rot:[0,0,0], scale:1, alpha:1});
+      if(save && willConvert){
+        try{
+          const outName=file.name.replace(/\.[^.]+$/,'')+'.ksplat';
+          GaussianSplats3D.KSplatLoader.downloadFile(buffer, outName);
+          setViewStatus('Saved '+outName,'ok');
+        }catch(e){ console.warn('save ksplat failed',e); }
+      }
     }
     renderLayerList();
     await rebuild();
-    setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok');
+    const conv = compress>0 ? ' · KSPLAT '+(compress===2?'8-bit':'16-bit') : '';
+    setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats'+conv,'ok');
   }catch(err){
     console.error(err); hideLoading();
     setViewStatus('Could not load: '+(err&&err.message?err.message:'unknown'),'err');
@@ -858,12 +887,21 @@ $('chipAuto').addEventListener('click',async()=>{
   setViewStatus(ok?'Auto-leveled to the object\u2019s vertical axis.':'Couldn\u2019t detect a clear vertical — try a preset.', ok?'ok':'warn');
 });
 syncUpChips();
+// load-pipeline controls
+$('chipSaveKsplat').addEventListener('click',()=>{
+  $('chipSaveKsplat').classList.toggle('active');
+  try{ localStorage.setItem('splatstudio.saveksplat', $('chipSaveKsplat').classList.contains('active')?'1':'0'); }catch(e){}
+});
+try{ if(localStorage.getItem('splatstudio.saveksplat')==='1') $('chipSaveKsplat').classList.add('active'); }catch(e){}
+try{ const lm=localStorage.getItem('splatstudio.loadmode'); if(lm!=null) $('loadMode').value=lm; }catch(e){}
+$('loadMode').addEventListener('change',()=>{ try{localStorage.setItem('splatstudio.loadmode',$('loadMode').value);}catch(e){} });
 $('viewSH').addEventListener('change',async()=>{
   if(!layers.length){ shCache=parseInt($('viewSH').value,10); return; }
   // SH degree affects parsing → re-parse cached files
   const sh=parseInt($('viewSH').value,10); shCache=sh;
+  const compress=parseInt($('loadMode').value,10);
   showLoading('Re-parsing','spherical harmonics'); setViewStatus('Re-parsing for SH '+sh+'…','warn');
-  try{ for(const l of layers){ l.buffer=await bufferFromFile(l.file,sh); l.count=l.buffer.getSplatCount(); }
+  try{ for(const l of layers){ l.buffer=await bufferFromFile(l.file,sh,compress); l.count=l.buffer.getSplatCount(); }
        renderLayerList(); await rebuild(); setViewStatus('Updated to SH '+sh+'.','ok'); }
   catch(err){ hideLoading(); setViewStatus('Re-parse failed: '+err.message,'err'); }
 });
