@@ -1026,8 +1026,8 @@ $('genRun').addEventListener('click',async()=>{
       return;
     }
 
-    const base=(genImageFile.name.replace(/\.[^.]+$/,'')||'generated');
-    const outName=base+'.'+fmt;
+    const stem=(genImageFile.name.replace(/\.[^.]+$/,'')||'generated');
+    const outName=stem+'.'+fmt;
     glog('loading into viewer · '+fmtBytes(buf.byteLength),'g');
     await addFiles([new File([buf], outName, {type:'application/octet-stream'})]);
     activateTab('view');
