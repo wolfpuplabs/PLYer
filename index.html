@@ -408,6 +408,7 @@
     </div>
     <div class="stage-bar" id="stageBar">
       <div class="pill" id="pillAR" style="display:none">⛶ AR</div>
+      <div class="pill" id="pillShare" style="display:none">⇪ Share</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
     </div>
@@ -507,10 +508,12 @@ function bufferFromFile(file, sh, compress){
   });
 }
 
-async function addFiles(fileList){
+async function addFiles(fileList, opts){
+  opts=opts||{};
   const files=[...fileList].filter(f=>formatFromName(f.name)!==null);
   if(!files.length){ setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.','err'); return; }
-  if(layers.length===0) didAutoLevel=false;   // a fresh scene should auto-level on load
+  if(opts.forceUp){ $('viewUp').value=opts.forceUp; syncUpChips(); }
+  if(layers.length===0) didAutoLevel = opts.forceUp ? true : false;   // generators are Y-up; captures auto-level
   const sh=parseInt($('viewSH').value,10); shCache=sh;
   const compress=parseInt($('loadMode').value,10);
   const save=$('chipSaveKsplat').classList.contains('active');
@@ -595,7 +598,7 @@ async function startMeshMode(){
   host.innerHTML='';
   const deps=await loadMeshDeps();
   const w=host.clientWidth||800, h=host.clientHeight||600;
-  const renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
+  const renderer=new THREE.WebGLRenderer({antialias:true, alpha:true, preserveDrawingBuffer:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(w,h);
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.0;
@@ -648,7 +651,7 @@ async function loadMeshFromArrayBuffer(buf, name){
     m.group.add(obj);
     frameMesh();
     hideLoading(); ambient.style.display='none';
-    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
+    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display='';
     if(typeof arVisible==='function') arVisible();
     setViewStatus('Mesh loaded · '+(name||'model'),'ok');
     window.dispatchEvent(new Event('resize'));
@@ -721,7 +724,7 @@ async function rebuild(){
     if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
     hideLoading();
   }
-  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display='';
   $('pillAR') && ($('pillAR').textContent = arPrep ? '✕ Exit AR' : '⛶ AR');
   arVisible();
 }
@@ -768,10 +771,22 @@ function autoLevel(){
   let xx=0,yy=0,zz=0,xy=0,xz=0,yz=0;
   for(let i=0;i<pts.length;i+=3){const dx=pts[i]-c[0],dy=pts[i+1]-c[1],dz=pts[i+2]-c[2];xx+=dx*dx;yy+=dy*dy;zz+=dz*dz;xy+=dx*dy;xz+=dx*dz;yz+=dy*dz;}
   const vecs=jacobiEigen([[xx/n,xy/n,xz/n],[xy/n,yy/n,yz/n],[xz/n,yz/n,zz/n]]);
-  const hint=new THREE.Vector3().fromArray(parseVec3($('viewUp').value,[0,-1,0])).normalize();
-  let best=null,bestDot=-1;
-  for(const v of vecs){ const d=v[0]*hint.x+v[1]*hint.y+v[2]*hint.z; if(Math.abs(d)>bestDot){bestDot=Math.abs(d); best=(d<0)?v.map(x=>-x):v.slice();} }
-  if(!best || bestDot<0.5) return false;   // no axis clearly near vertical → leave as-is
+  const hint=new THREE.Vector3().fromArray(parseVec3($('viewUp').value,[0,1,0])).normalize();
+  // pick the principal axis nearest the current up hint (direction-agnostic)
+  let ax=null,bestDot=-1;
+  for(const v of vecs){ const d=Math.abs(v[0]*hint.x+v[1]*hint.y+v[2]*hint.z); if(d>bestDot){bestDot=d; ax=v.slice();} }
+  if(!ax || bestDot<0.5) return false;   // no axis clearly near vertical → leave as-is
+  // choose the SIGN by the distribution's skew along that axis: ground/floor scenes are
+  // dense at the bottom with a sparse tail upward, so the tail points "up".
+  let mean=0; const t=new Float64Array(n);
+  for(let i=0,j=0;i<pts.length;i+=3,j++){ const tt=(pts[i]-c[0])*ax[0]+(pts[i+1]-c[1])*ax[1]+(pts[i+2]-c[2])*ax[2]; t[j]=tt; mean+=tt; }
+  mean/=n;
+  let m2=0,m3=0; for(let j=0;j<n;j++){ const d=t[j]-mean; m2+=d*d; m3+=d*d*d; }
+  const std=Math.sqrt(m2/n)||1e-6, skew=(m3/n)/(std*std*std);
+  let sign;
+  if(Math.abs(skew)>0.15) sign = skew>0 ? 1 : -1;                       // skewed → tail is up
+  else sign = (ax[0]*hint.x+ax[1]*hint.y+ax[2]*hint.z)>=0 ? 1 : -1;     // symmetric → follow hint
+  const best=ax.map(x=>x*sign);
   $('viewUp').value=best.map(x=>+x.toFixed(3)).join(', ');
   syncUpChips();
   return true;
@@ -831,6 +846,7 @@ function renderLayerList(){
           <div class="layer-name" title="${l.name}">${l.name}</div>
           <div class="layer-meta">${fmtNum(l.count)} splats</div>
         </div>
+        <button class="icon-btn dl" title="Download .ksplat">⤓</button>
         <button class="icon-btn caret" title="Transform">⌄</button>
         <button class="icon-btn x" title="Remove">✕</button>
       </div>
@@ -852,6 +868,11 @@ function renderLayerList(){
 
     row.querySelector('.dot-toggle').addEventListener('click',async()=>{ l.hidden=!l.hidden; renderLayerList(); await rebuild(); setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok'); });
     row.querySelector('.caret').addEventListener('click',()=>row.classList.toggle('open'));
+    row.querySelector('.dl').addEventListener('click',(e)=>{
+      e.stopPropagation();
+      try{ GaussianSplats3D.KSplatLoader.downloadFile(l.buffer, l.name.replace(/\.[^.]+$/,'')+'.ksplat'); setViewStatus('Downloading '+l.name.replace(/\.[^.]+$/,'')+'.ksplat','ok'); }
+      catch(err){ console.error(err); setViewStatus('Download failed: '+(err&&err.message?err.message:'unknown'),'err'); }
+    });
     row.querySelector('.x').addEventListener('click',async()=>{ layers=layers.filter(x=>x.id!==l.id); renderLayerList(); await rebuild(); if(!layers.length) setViewStatus('All layers cleared.'); else setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok'); });
 
     row.querySelectorAll('input[data-k]').forEach(inp=>{
@@ -940,6 +961,28 @@ function doSave(){
 $('bmSave').addEventListener('click',doSave);
 $('pillSave').addEventListener('click',doSave);
 $('pillFrame').addEventListener('click',()=>{ if(meshActive) frameMesh(); else frameScene(); });
+
+async function shareView(){
+  let canvas=null;
+  if(meshActive && mesh){ try{ mesh.renderer.render(mesh.scene, mesh.camera); }catch(e){} canvas=mesh.renderer.domElement; }
+  else if(viewerActive && viewer){ try{ viewer.render(); }catch(e){} canvas=viewer.renderer && viewer.renderer.domElement; }
+  if(!canvas){ setViewStatus('Nothing to share yet.','warn'); return; }
+  let url;
+  try{ url=canvas.toDataURL('image/png'); }catch(e){ setViewStatus('Snapshot blocked by the browser.','err'); return; }
+  if(!url || url.length<2000){ setViewStatus('Snapshot came back empty — try again.','warn'); return; }
+  try{
+    const blob=await (await fetch(url)).blob();
+    const file=new File([blob],'splat-studio.png',{type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Splat Studio', text:'Rendered with Splat Studio'});
+      setViewStatus('Shared snapshot.','ok');
+    } else {
+      const a=document.createElement('a'); a.href=url; a.download='splat-studio.png'; a.click();
+      setViewStatus('Snapshot downloaded.','ok');
+    }
+  }catch(e){ if(e&&e.name==='AbortError'){ return; } setViewStatus('Share canceled.','warn'); }
+}
+$('pillShare').addEventListener('click',shareView);
 
 // WebXR AR — only offered on devices that actually support immersive-ar (e.g. Android Chrome).
 // iOS/iPadOS Safari has no WebXR, so the pill stays hidden there.
@@ -1166,7 +1209,7 @@ async function generateTrellis(){
     const outName=base+'.ply';
     glog('loading into viewer · '+fmtBytes(buf.byteLength),'g');
     stopHB();
-    await addFiles([new File([buf], outName, {type:'application/octet-stream'})]);
+    await addFiles([new File([buf], outName, {type:'application/octet-stream'})], {forceUp:'0, 1, 0'});
     glog('opening in viewer ✓','g');
     activateTab('view');
     setGenStatus('Done — “'+outName+'” loaded in the View tab.','ok');
@@ -1265,7 +1308,7 @@ $('genRun').addEventListener('click',async()=>{
     const stem=(genImageFile.name.replace(/\.[^.]+$/,'')||'generated');
     const outName=stem+'.'+fmt;
     glog('loading into viewer · '+fmtBytes(buf.byteLength),'g');
-    await addFiles([new File([buf], outName, {type:'application/octet-stream'})]);
+    await addFiles([new File([buf], outName, {type:'application/octet-stream'})], {forceUp:'0, 1, 0'});
     activateTab('view');
     setGenStatus('Done — added “'+outName+'” to the scene.','ok');
   }catch(err){
