@@ -299,9 +299,14 @@
         <div class="group">
           <div class="group-title">fal.ai access</div>
           <div class="field">
-            <label class="lbl" for="falKey">API key</label>
+            <label class="lbl" for="proxyUrl">Proxy URL <span style="color:var(--faint)">· recommended for public sites</span></label>
+            <input type="text" id="proxyUrl" placeholder="https://your-worker.workers.dev" autocomplete="off" />
+            <div class="hint">If set, requests go through your proxy and the key stays on the server. Leave empty to call fal directly with a key.</div>
+          </div>
+          <div class="field">
+            <label class="lbl" for="falKey">API key <span style="color:var(--faint)">· only if no proxy</span></label>
             <input type="password" id="falKey" placeholder="paste your fal key (key_…)" autocomplete="off" />
-            <div class="hint">Used directly from your browser and saved only on this device. For personal use — get one at fal.ai/dashboard/keys. Each run uses your fal credits.</div>
+            <div class="hint">Used directly from your browser, saved only on this device. Don\u2019t put a key on a public page — use a proxy instead.</div>
           </div>
         </div>
 
@@ -780,14 +785,17 @@ $('convRun').addEventListener('click',async()=>{
    GENERATE — image → 3D splat via fal.ai (TripoSplat)
    ===================================================== */
 const FAL_KEY_STORE='splatstudio.falkey';
+const PROXY_STORE='splatstudio.proxyurl';
 let genImageFile=null, genBusy=false;
 const genLogEl=$('genLog');
 function glog(msg,cls){const s=document.createElement('span');s.className=cls||'t';s.textContent=(genLogEl.textContent?'\n':'')+'› '+msg;genLogEl.appendChild(s);genLogEl.scrollTop=genLogEl.scrollHeight;}
 function setGenStatus(msg,kind){const el=$('genStatus');el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
-function genReady(){ $('genRun').disabled = !(genImageFile && $('falKey').value.trim() && !genBusy); }
+function genReady(){ $('genRun').disabled = !(genImageFile && ($('proxyUrl').value.trim()||$('falKey').value.trim()) && !genBusy); }
 
 try{ const k=localStorage.getItem(FAL_KEY_STORE); if(k) $('falKey').value=k; }catch(e){}
+try{ const p=localStorage.getItem(PROXY_STORE); if(p) $('proxyUrl').value=p; }catch(e){}
 $('falKey').addEventListener('input',()=>{ try{localStorage.setItem(FAL_KEY_STORE,$('falKey').value.trim());}catch(e){} genReady(); });
+$('proxyUrl').addEventListener('input',()=>{ try{localStorage.setItem(PROXY_STORE,$('proxyUrl').value.trim());}catch(e){} genReady(); });
 $('genSteps').addEventListener('input',e=>$('genStepsVal').textContent=e.target.value);
 
 wireDrop($('genDrop'),$('genInput'),(files)=>{
@@ -821,14 +829,17 @@ function imageToDataURL(file, max=1024){
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
 $('genRun').addEventListener('click',async()=>{
+  const proxy=$('proxyUrl').value.trim().replace(/\/+$/,'');
   const key=$('falKey').value.trim();
-  if(!genImageFile||!key) return;
+  if(!genImageFile||(!proxy&&!key)) return;
   genBusy=true; genReady(); $('genRun').textContent='Generating…';
   setGenStatus('Generating…','warn');
 
-  const headers={'Authorization':'Key '+key,'Content-Type':'application/json'};
+  const base = proxy || 'https://queue.fal.run';
+  const headers = proxy ? {'Content-Type':'application/json'} : {'Authorization':'Key '+key,'Content-Type':'application/json'};
   const fmt = 'ply';
   try{
+    glog(proxy?'using proxy '+proxy:'calling fal.ai directly');
     glog('preparing image…');
     const dataUrl=await imageToDataURL(genImageFile,1024);
     const input={
@@ -837,8 +848,8 @@ $('genRun').addEventListener('click',async()=>{
       num_inference_steps:parseInt($('genSteps').value,10),
       output_format:fmt
     };
-    glog('submitting to fal.ai · tripo3d/triposplat …');
-    const sub=await fetch('https://queue.fal.run/tripo3d/triposplat',{method:'POST',headers,body:JSON.stringify(input)});
+    glog('submitting · tripo3d/triposplat …');
+    const sub=await fetch(base+'/tripo3d/triposplat',{method:'POST',headers,body:JSON.stringify(input)});
     if(!sub.ok){
       const txt=await sub.text(); let detail=txt;
       try{ const j=JSON.parse(txt); detail=j.detail||j.message||txt; }catch(e){}
