@@ -1,142 +1,678 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spark.js 3D Gaussian Splatting Demo</title>
-    <style>
-        /* Mengatur agar canvas memenuhi seluruh layar browser */
-        html, body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            width: 100%;
-            height: 100%;
-            background-color: #111;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Splat Studio — PLY viewer & KSPLAT converter</title>
 
-        /* Overlay UI sederhana mirip dokumentasi Spark */
-        #ui-overlay {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-            pointer-events: none; /* Klik tembus ke canvas */
-            z-index: 10;
-        }
+<!-- three + GaussianSplats3D (MIT, © Mark Kellogg) loaded from CDN -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+    "@mkkellogg/gaussian-splats-3d": "https://cdn.jsdelivr.net/npm/@mkkellogg/gaussian-splats-3d@0.4.7/build/gaussian-splats-3d.module.js"
+  }
+}
+</script>
 
-        #ui-overlay h1 {
-            margin: 0 0 5px 0;
-            font-size: 24px;
-            letter-spacing: -0.5px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-        #ui-overlay p {
-            margin: 0;
-            font-size: 14px;
-            color: #aaa;
-        }
+<style>
+  :root{
+    --bg:#0a0c10;
+    --panel:#12161f;
+    --panel-2:#171c27;
+    --raised:#1d2330;
+    --border:#272e3c;
+    --border-soft:#1f2531;
+    --text:#e9edf4;
+    --muted:#8b95a7;
+    --faint:#5b6577;
+    --accent:#c879ff;
+    --accent-dim:#8a4fc0;
+    --ok:#5fd3a0;
+    --warn:#ffb454;
+    --err:#ff6b7a;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --display:"Space Grotesk",system-ui,sans-serif;
+    --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:var(--ui);font-size:14px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+  .app{display:flex;height:100vh;width:100vw}
 
-        #loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 18px;
-            font-weight: 500;
-            z-index: 5;
-            transition: opacity 0.5s ease;
-        }
-    </style>
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    width:340px;min-width:340px;height:100%;
+    background:var(--panel);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;overflow-y:auto;
+  }
+  .brand{padding:22px 22px 16px;border-bottom:1px solid var(--border-soft)}
+  .brand .eyebrow{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--faint);
+  }
+  .brand h1{
+    font-family:var(--display);font-weight:600;font-size:22px;
+    margin:6px 0 2px;letter-spacing:-.01em;
+  }
+  .brand h1 .dot{color:var(--accent)}
+  .brand p{margin:0;color:var(--muted);font-size:12.5px}
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-                "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/2.1.0/spark.module.js"
-            }
-        }
-    </script>
+  .tabs{display:flex;gap:6px;padding:16px 18px 0}
+  .tab{
+    flex:1;text-align:center;padding:9px 0;border-radius:8px;cursor:pointer;
+    font-family:var(--mono);font-size:12px;letter-spacing:.04em;
+    color:var(--muted);background:transparent;border:1px solid transparent;
+    transition:.15s;user-select:none;
+  }
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--text);background:var(--raised);border-color:var(--border)}
+  .tab.active .num{color:var(--accent)}
+  .tab .num{font-size:10px;opacity:.8;margin-right:5px}
+
+  .panel-body{padding:18px;display:flex;flex-direction:column;gap:18px;flex:1}
+  .mode{display:none;flex-direction:column;gap:18px}
+  .mode.active{display:flex}
+
+  /* drop target */
+  .drop{
+    border:1.5px dashed var(--border);border-radius:12px;
+    padding:22px 16px;text-align:center;cursor:pointer;
+    transition:.15s;background:var(--panel-2);
+  }
+  .drop:hover{border-color:var(--accent-dim);background:var(--raised)}
+  .drop.over{border-color:var(--accent);background:rgba(200,121,255,.06)}
+  .drop .ico{font-size:24px;opacity:.7;margin-bottom:8px}
+  .drop strong{display:block;font-size:13px;font-weight:600}
+  .drop span{display:block;color:var(--faint);font-size:11px;margin-top:4px;font-family:var(--mono)}
+  .drop .file{
+    margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--accent);
+    word-break:break-all;
+  }
+
+  .group{display:flex;flex-direction:column;gap:13px}
+  .group-title{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--faint);
+    padding-bottom:6px;border-bottom:1px solid var(--border-soft);
+  }
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  label.lbl{font-size:12.5px;color:var(--muted)}
+  .hint{font-size:10.5px;color:var(--faint);font-family:var(--mono);line-height:1.4}
+  .val{font-family:var(--mono);font-size:12px;color:var(--text);min-width:42px;text-align:right}
+
+  select,input[type=text]{
+    width:100%;background:var(--bg);color:var(--text);
+    border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+    font-family:var(--mono);font-size:12.5px;outline:none;transition:.15s;
+  }
+  select:focus,input[type=text]:focus{border-color:var(--accent-dim)}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;
+    background:var(--border);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:2px solid var(--bg);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:15px;height:15px;border-radius:50%;background:var(--accent);
+    cursor:pointer;border:2px solid var(--bg);
+  }
+
+  .btn{
+    width:100%;padding:12px;border-radius:9px;border:none;cursor:pointer;
+    font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.02em;
+    background:var(--accent);color:#1a0a26;transition:.15s;
+  }
+  .btn:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+  .btn.ghost{background:var(--raised);color:var(--text);border:1px solid var(--border)}
+  .btn.ghost:hover{border-color:var(--accent-dim)}
+
+  .status{
+    font-family:var(--mono);font-size:11.5px;min-height:16px;
+    color:var(--muted);word-break:break-word;
+  }
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)} .status.warn{color:var(--warn)}
+
+  .footnote{
+    padding:14px 18px;border-top:1px solid var(--border-soft);
+    font-size:10.5px;color:var(--faint);font-family:var(--mono);line-height:1.6;
+  }
+  .footnote a{color:var(--accent-dim);text-decoration:none}
+  .footnote a:hover{text-decoration:underline}
+
+  /* ---------- stage ---------- */
+  .stage{position:relative;flex:1;height:100%;background:#000;overflow:hidden}
+  #viewerHost{position:absolute;inset:0}
+  #viewerHost canvas{display:block}
+
+  /* ambient empty-state field */
+  #ambient{position:absolute;inset:0;display:block}
+  .empty{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;pointer-events:none;
+    text-align:center;padding:24px;
+  }
+  .empty .ring{
+    width:54px;height:54px;border-radius:50%;
+    background:radial-gradient(circle at 50% 45%,rgba(200,121,255,.55),rgba(200,121,255,0) 70%);
+    box-shadow:0 0 40px 6px rgba(200,121,255,.25);margin-bottom:4px;
+  }
+  .empty h2{font-family:var(--display);font-weight:500;font-size:18px;margin:0;color:#cfd6e2}
+  .empty p{margin:0;color:var(--faint);font-size:12.5px;max-width:300px;font-family:var(--mono)}
+
+  /* converter stage */
+  .convstage{
+    position:absolute;inset:0;display:none;flex-direction:column;
+    padding:34px;gap:20px;overflow:auto;background:
+      radial-gradient(120% 80% at 20% 0%,rgba(200,121,255,.05),transparent 60%),var(--bg);
+  }
+  .convstage.active{display:flex}
+  .conv-head{font-family:var(--display);font-size:26px;font-weight:600;letter-spacing:-.01em}
+  .conv-head small{display:block;font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:400;margin-top:4px}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat{
+    background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:15px 16px;
+  }
+  .stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .stat .v{font-family:var(--mono);font-size:21px;font-weight:600;margin-top:7px;color:var(--text)}
+  .stat .v.accent{color:var(--accent)}
+  .stat .v.ok{color:var(--ok)}
+
+  .log{
+    flex:1;min-height:120px;background:#06080c;border:1px solid var(--border);border-radius:11px;
+    padding:14px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);
+    overflow:auto;white-space:pre-wrap;line-height:1.7;
+  }
+  .log .t{color:var(--faint)}
+  .log .a{color:var(--accent)} .log .g{color:var(--ok)} .log .w{color:var(--warn)} .log .e{color:var(--err)}
+
+  .loadbadge{
+    position:absolute;top:16px;left:16px;z-index:5;
+    font-family:var(--mono);font-size:11px;color:var(--muted);
+    background:rgba(10,12,16,.7);border:1px solid var(--border);
+    padding:6px 11px;border-radius:7px;backdrop-filter:blur(6px);display:none;
+  }
+  .loadbadge.show{display:block}
+
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  @media (max-width:820px){
+    body{overflow:auto}
+    .app{flex-direction:column;height:auto;min-height:100vh}
+    .sidebar{width:100%;min-width:0;height:auto;max-height:none}
+    .stage{height:62vh;min-height:380px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    #ambient{display:none}
+  }
+</style>
 </head>
 <body>
+<div class="app">
 
-    <div id="ui-overlay">
-        <h1>✨ Spark.js Demo</h1>
-        <p>3D Gaussian Splatting Renderer untuk THREE.js</p>
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="eyebrow">Gaussian&nbsp;Splatting&nbsp;·&nbsp;Toolkit</div>
+      <h1>Splat&nbsp;Studio<span class="dot">.</span></h1>
+      <p>View &amp; convert .ply / .splat / .ksplat in the browser</p>
     </div>
 
-    <div id="loading">Memuat model 3D Splatting...</div>
+    <div class="tabs">
+      <div class="tab active" data-tab="view"><span class="num">01</span>View</div>
+      <div class="tab" data-tab="convert"><span class="num">02</span>Convert</div>
+    </div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
+    <div class="panel-body">
 
-        // 1. Inisialisasi Scene, Kamera, dan WebGLRenderer dasar THREE.js
-        const scene = new THREE.Scene();
-        
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
-        camera.position.set(0, 1, 4); // Mengatur posisi kamera awal
+      <!-- ---------- VIEW MODE ---------- -->
+      <div class="mode active" id="mode-view">
+        <div class="drop" id="viewDrop">
+          <div class="ico">◈</div>
+          <strong>Drop a splat file</strong>
+          <span>.ply · .splat · .ksplat</span>
+          <div class="file" id="viewFileName"></div>
+          <input type="file" id="viewInput" accept=".ply,.splat,.ksplat" hidden />
+        </div>
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        document.body.appendChild(renderer.domElement);
+        <div class="group">
+          <div class="group-title">Render options</div>
 
-        // 2. Tambahkan OrbitControls agar user bisa berinteraksi (Rotate/Zoom/Pan)
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
+          <div class="field">
+            <div class="field-row">
+              <label class="lbl" for="viewAlpha">Alpha removal threshold</label>
+              <span class="val" id="viewAlphaVal">1</span>
+            </div>
+            <input type="range" id="viewAlpha" min="0" max="255" value="1" />
+            <div class="hint">Discards splats below this opacity (0–255). Higher = lighter scene.</div>
+          </div>
 
-        // 3. Membuat SparkRenderer (Wajib pada Spark 2.0+ untuk merender splats)
-        const spark = new SparkRenderer({ renderer });
-        scene.add(spark);
+          <div class="field">
+            <label class="lbl" for="viewSH">Spherical harmonics</label>
+            <select id="viewSH">
+              <option value="0">Degree 0 — base color (fastest)</option>
+              <option value="1">Degree 1 — view-dependent</option>
+              <option value="2">Degree 2 — full detail</option>
+            </select>
+            <div class="hint">Only affects files that store SH coefficients.</div>
+          </div>
 
-        // 4. Memuat Model 3D Gaussian Splat (.spz / .ply / .splat)
-        // Kita menggunakan asset 'butterfly' default dari server Spark.js
-        const splatURL = "https://sparkjs.dev/assets/splats/butterfly.spz";
-        
-        const butterfly = new SplatMesh({ 
-            url: splatURL,
-            onLoad: () => {
-                // Sembunyikan tulisan loading jika model sudah termuat
-                const loadingEl = document.getElementById('loading');
-                if (loadingEl) loadingEl.style.opacity = 0;
-            }
-        });
+          <div class="field">
+            <label class="lbl" for="viewUp">Camera up vector</label>
+            <input type="text" id="viewUp" value="0, -1, -0.6" />
+            <div class="hint">Most splat captures are Y-down; tweak if the scene loads upside-down.</div>
+          </div>
+        </div>
 
-        // Mengatur rotasi dan posisi awal mesh splat
-        butterfly.quaternion.set(1, 0, 0, 0);
-        butterfly.position.set(0, 0, 0);
-        scene.add(butterfly);
+        <button class="btn ghost" id="viewReset" disabled>Clear scene</button>
+        <div class="status" id="viewStatus">Waiting for a file…</div>
+      </div>
 
-        // 5. Animation Loop
-        renderer.setAnimationLoop(function animate(time) {
-            // Update kontrol kamera
-            controls.update();
+      <!-- ---------- CONVERT MODE ---------- -->
+      <div class="mode" id="mode-convert">
+        <div class="drop" id="convDrop">
+          <div class="ico">⧉</div>
+          <strong>Drop a .ply or .splat</strong>
+          <span>output: compressed .ksplat</span>
+          <div class="file" id="convFileName"></div>
+          <input type="file" id="convInput" accept=".ply,.splat" hidden />
+        </div>
 
-            // Efek animasi rotasi otomatis pada objek kupu-kupu
-            if (butterfly) {
-                butterfly.rotation.y += 0.005;
-            }
+        <div class="group">
+          <div class="group-title">Conversion settings</div>
 
-            // Render scene utama
-            renderer.render(scene, camera);
-        });
+          <div class="field">
+            <label class="lbl" for="convComp">Compression level</label>
+            <select id="convComp">
+              <option value="0">0 — none (full precision, largest)</option>
+              <option value="1" selected>1 — 16-bit (balanced)</option>
+              <option value="2">2 — 8-bit (smallest)</option>
+            </select>
+          </div>
 
-        // 6. Handle perubahan ukuran layar (Responsive layout)
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
+          <div class="field">
+            <div class="field-row">
+              <label class="lbl" for="convAlpha">Alpha removal threshold</label>
+              <span class="val" id="convAlphaVal">1</span>
+            </div>
+            <input type="range" id="convAlpha" min="0" max="255" value="1" />
+            <div class="hint">Prunes near-transparent splats before packing.</div>
+          </div>
+
+          <div class="field">
+            <label class="lbl" for="convSH">Spherical harmonics degree</label>
+            <select id="convSH">
+              <option value="0" selected>0 — strip SH (smallest)</option>
+              <option value="1">1 — keep degree 1</option>
+              <option value="2">2 — keep degree 2</option>
+            </select>
+          </div>
+
+          <div class="field-row">
+            <div class="field" style="flex:1">
+              <label class="lbl" for="convBlock">Block size</label>
+              <input type="text" id="convBlock" value="5.0" />
+            </div>
+            <div class="field" style="flex:1">
+              <label class="lbl" for="convBucket">Bucket size</label>
+              <input type="text" id="convBucket" value="256" />
+            </div>
+          </div>
+          <div class="hint">Spatial bucketing for compression. Defaults match the reference tool.</div>
+        </div>
+
+        <button class="btn" id="convRun" disabled>Convert &amp; download .ksplat</button>
+        <div class="status" id="convStatus">Drop a file to begin.</div>
+      </div>
+
+    </div>
+
+    <div class="footnote">
+      Runs entirely in your browser — nothing is uploaded.<br>
+      Built on <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> by Mark Kellogg (MIT).
+    </div>
+  </aside>
+
+  <!-- ================= STAGE ================= -->
+  <main class="stage">
+    <div class="loadbadge" id="loadBadge">loading…</div>
+
+    <!-- viewer -->
+    <canvas id="ambient"></canvas>
+    <div id="viewerHost"></div>
+    <div class="empty" id="emptyState">
+      <div class="ring"></div>
+      <h2>No scene loaded</h2>
+      <p>Drop a .ply, .splat or .ksplat file to render it. Drag to orbit, scroll to zoom.</p>
+    </div>
+
+    <!-- converter -->
+    <div class="convstage" id="convStage">
+      <div class="conv-head">PLY / SPLAT → KSPLAT
+        <small>Strips and compresses Gaussian data into the .ksplat format for fast loading.</small>
+      </div>
+      <div class="stats" id="convStats">
+        <div class="stat"><div class="k">Input splats</div><div class="v" id="stIn">—</div></div>
+        <div class="stat"><div class="k">Output splats</div><div class="v" id="stOut">—</div></div>
+        <div class="stat"><div class="k">Input size</div><div class="v" id="stInSize">—</div></div>
+        <div class="stat"><div class="k">Output size</div><div class="v accent" id="stOutSize">—</div></div>
+        <div class="stat"><div class="k">Size change</div><div class="v ok" id="stRatio">—</div></div>
+      </div>
+      <div class="log" id="convLog"><span class="t">› ready. drop a .ply or .splat in the panel on the left.</span></div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
+import * as THREE from 'three';
+
+const SF = GaussianSplats3D.SceneFormat;
+
+/* ---------- helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const fmtBytes = (b) => {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(2) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+};
+const fmtNum = (n) => n.toLocaleString('en-US');
+const extOf = (name) => name.toLowerCase().split('.').pop();
+const formatFromName = (name) => {
+  const e = extOf(name);
+  if (e === 'ply') return SF.Ply;
+  if (e === 'splat') return SF.Splat;
+  if (e === 'ksplat') return SF.KSplat;
+  return null;
+};
+
+/* ---------- tab switching ---------- */
+const tabs = document.querySelectorAll('.tab');
+const convStage = $('convStage');
+const emptyState = $('emptyState');
+const ambient = $('ambient');
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  const tab = t.dataset.tab;
+  document.querySelectorAll('.mode').forEach(m => m.classList.remove('active'));
+  $('mode-' + tab).classList.add('active');
+  const converting = tab === 'convert';
+  convStage.classList.toggle('active', converting);
+  // hide viewer visuals while on convert tab
+  ambient.style.display = converting ? 'none' : '';
+  emptyState.style.display = (converting || viewerActive) ? 'none' : 'flex';
+  $('viewerHost').style.display = converting ? 'none' : '';
+}));
+
+/* =====================================================
+   VIEWER
+   ===================================================== */
+let viewer = null;
+let viewerActive = false;
+const host = $('viewerHost');
+const badge = $('loadBadge');
+
+function parseVec3(str, fallback){
+  const p = str.split(',').map(s => parseFloat(s.trim()));
+  if (p.length === 3 && p.every(n => !isNaN(n))) return p;
+  return fallback;
+}
+
+async function disposeViewer(){
+  if (viewer){
+    try { await viewer.dispose(); } catch(e){ /* ignore */ }
+    viewer = null;
+  }
+  host.innerHTML = '';
+  viewerActive = false;
+}
+
+async function loadScene(file){
+  const format = formatFromName(file.name);
+  if (format === null){
+    setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.', 'err');
+    return;
+  }
+  setViewStatus('Preparing renderer…');
+  badge.classList.add('show'); badge.textContent = 'loading…';
+  emptyState.style.display = 'none';
+
+  await disposeViewer();
+
+  const up = parseVec3($('viewUp').value, [0,-1,-0.6]);
+  const sh = parseInt($('viewSH').value, 10);
+  const alpha = parseInt($('viewAlpha').value, 10);
+
+  try {
+    viewer = new GaussianSplats3D.Viewer({
+      rootElement: host,
+      sharedMemoryForWorkers: false,   // required when not cross-origin isolated (local files)
+      useBuiltInControls: true,
+      cameraUp: up,
+      initialCameraPosition: [-1, -4, 6],
+      initialCameraLookAt: [0, 1, 0],
+      sphericalHarmonicsDegree: sh
+    });
+
+    const url = URL.createObjectURL(file);
+    await viewer.addSplatScene(url, {
+      format,
+      splatAlphaRemovalThreshold: alpha,
+      showLoadingUI: true,
+      progressiveLoad: false
+    });
+    URL.revokeObjectURL(url);
+
+    viewer.start();
+    viewerActive = true;
+    $('viewReset').disabled = false;
+    badge.classList.remove('show');
+    setViewStatus('Rendering · ' + file.name, 'ok');
+  } catch (err){
+    console.error(err);
+    badge.classList.remove('show');
+    await disposeViewer();
+    emptyState.style.display = 'flex';
+    setViewStatus('Could not load: ' + (err && err.message ? err.message : 'unknown error'), 'err');
+  }
+}
+
+function setViewStatus(msg, kind){
+  const el = $('viewStatus');
+  el.textContent = msg;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+/* viewer inputs */
+$('viewAlpha').addEventListener('input', e => $('viewAlphaVal').textContent = e.target.value);
+$('viewReset').addEventListener('click', async () => {
+  await disposeViewer();
+  $('viewFileName').textContent = '';
+  $('viewReset').disabled = true;
+  emptyState.style.display = 'flex';
+  setViewStatus('Scene cleared.');
+});
+
+wireDrop($('viewDrop'), $('viewInput'), (file) => {
+  $('viewFileName').textContent = file.name;
+  loadScene(file);
+});
+
+/* =====================================================
+   CONVERTER
+   ===================================================== */
+let convFile = null;
+const logEl = $('convLog');
+function log(msg, cls){
+  const span = document.createElement('span');
+  span.className = cls || 't';
+  span.textContent = (logEl.textContent ? '\n' : '') + '› ' + msg;
+  logEl.appendChild(span);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setConvStatus(msg, kind){
+  const el = $('convStatus');
+  el.textContent = msg;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+$('convAlpha').addEventListener('input', e => $('convAlphaVal').textContent = e.target.value);
+
+wireDrop($('convDrop'), $('convInput'), (file) => {
+  const fmt = formatFromName(file.name);
+  if (fmt !== SF.Ply && fmt !== SF.Splat){
+    setConvStatus('Pick a .ply or .splat file to convert.', 'err');
+    return;
+  }
+  convFile = file;
+  $('convFileName').textContent = file.name;
+  $('convRun').disabled = false;
+  setConvStatus('Ready: ' + file.name, 'ok');
+  log('loaded ' + file.name + '  (' + fmtBytes(file.size) + ')', 'a');
+});
+
+$('convRun').addEventListener('click', async () => {
+  if (!convFile) return;
+  const btn = $('convRun');
+  btn.disabled = true;
+  setConvStatus('Converting…', 'warn');
+
+  const compression = parseInt($('convComp').value, 10);
+  const alpha = parseInt($('convAlpha').value, 10);
+  const sh = parseInt($('convSH').value, 10);
+  const blockSize = parseFloat($('convBlock').value) || 5.0;
+  const bucketSize = parseInt($('convBucket').value, 10) || 256;
+  const format = formatFromName(convFile.name);
+
+  try {
+    log('reading file…');
+    const buffer = await convFile.arrayBuffer();
+
+    // yield so the UI can paint the "Converting…" state
+    await new Promise(r => setTimeout(r, 16));
+
+    log('parsing ' + (format === SF.Ply ? 'PLY' : 'SPLAT') + ' → uncompressed splat array…');
+    let splatArray;
+    if (format === SF.Ply){
+      splatArray = GaussianSplats3D.PlyParser.parseToUncompressedSplatArray(buffer, sh);
+    } else {
+      splatArray = GaussianSplats3D.SplatParser.parseStandardSplatToUncompressedSplatArray(buffer);
+    }
+    const inCount = splatArray.splatCount;
+    log(fmtNum(inCount) + ' splats parsed', 'g');
+
+    log('packing → .ksplat  (compression ' + compression + ', SH ' + sh + ')…');
+    const generator = GaussianSplats3D.SplatBufferGenerator.getStandardGenerator(
+      alpha, compression, 0, new THREE.Vector3(0,0,0), blockSize, bucketSize
+    );
+    const splatBuffer = generator.generateFromUncompressedSplatArray(splatArray);
+
+    const outCount = splatBuffer.getSplatCount();
+    const outBytes = splatBuffer.bufferData.byteLength;
+    const inBytes = convFile.size;
+    const pct = ((1 - outBytes / inBytes) * 100);
+
+    // stats
+    $('stIn').textContent = fmtNum(inCount);
+    $('stOut').textContent = fmtNum(outCount);
+    $('stInSize').textContent = fmtBytes(inBytes);
+    $('stOutSize').textContent = fmtBytes(outBytes);
+    const ratioEl = $('stRatio');
+    ratioEl.textContent = (pct >= 0 ? '−' : '+') + Math.abs(pct).toFixed(1) + '%';
+    ratioEl.className = 'v ' + (pct >= 0 ? 'ok' : 'accent');
+
+    log(fmtNum(outCount) + ' splats packed · ' + fmtBytes(outBytes), 'g');
+
+    const outName = convFile.name.replace(/\.[^.]+$/, '') + '.ksplat';
+    GaussianSplats3D.KSplatLoader.downloadFile(splatBuffer, outName);
+    log('download started: ' + outName, 'a');
+    setConvStatus('Done — ' + outName + ' downloaded.', 'ok');
+  } catch (err){
+    console.error(err);
+    log('error: ' + (err && err.message ? err.message : err), 'e');
+    setConvStatus('Conversion failed — see log.', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* =====================================================
+   shared drag & drop wiring
+   ===================================================== */
+function wireDrop(dropEl, inputEl, onFile){
+  dropEl.addEventListener('click', () => inputEl.click());
+  inputEl.addEventListener('change', () => {
+    if (inputEl.files && inputEl.files[0]) onFile(inputEl.files[0]);
+  });
+  ['dragenter','dragover'].forEach(ev =>
+    dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.add('over'); }));
+  ['dragleave','dragend','drop'].forEach(ev =>
+    dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.remove('over'); }));
+  dropEl.addEventListener('drop', e => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) onFile(f);
+  });
+}
+
+/* =====================================================
+   ambient splat field (empty-state signature)
+   ===================================================== */
+(function ambientField(){
+  const c = ambient, ctx = c.getContext('2d');
+  let w, h, blobs, raf;
+  const palette = ['#c879ff','#7a6bff','#ff8fd0','#6fd0ff','#ffd27a'];
+  function resize(){
+    w = c.width = c.clientWidth * devicePixelRatio;
+    h = c.height = c.clientHeight * devicePixelRatio;
+  }
+  function init(){
+    resize();
+    blobs = Array.from({length:34}, () => ({
+      x: Math.random()*w, y: Math.random()*h,
+      r: (40 + Math.random()*120) * devicePixelRatio,
+      vx: (Math.random()-.5)*0.25*devicePixelRatio,
+      vy: (Math.random()-.5)*0.25*devicePixelRatio,
+      col: palette[(Math.random()*palette.length)|0],
+      a: 0.05 + Math.random()*0.10
+    }));
+  }
+  function frame(){
+    ctx.clearRect(0,0,w,h);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of blobs){
+      b.x += b.vx; b.y += b.vy;
+      if (b.x < -b.r) b.x = w+b.r; if (b.x > w+b.r) b.x = -b.r;
+      if (b.y < -b.r) b.y = h+b.r; if (b.y > h+b.r) b.y = -b.r;
+      const g = ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r);
+      g.addColorStop(0, b.col + Math.round(b.a*255).toString(16).padStart(2,'0'));
+      g.addColorStop(1, b.col + '00');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+    }
+    raf = requestAnimationFrame(frame);
+  }
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    init(); frame();
+    window.addEventListener('resize', () => { cancelAnimationFrame(raf); init(); frame(); });
+  }
+})();
+</script>
 </body>
 </html>
