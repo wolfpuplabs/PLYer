@@ -184,6 +184,7 @@
     <div class="tabs">
       <div class="tab active" data-tab="view"><span class="num">01</span>View</div>
       <div class="tab" data-tab="convert"><span class="num">02</span>Convert</div>
+      <div class="tab" data-tab="generate"><span class="num">03</span>Generate</div>
     </div>
 
     <div class="panel-body">
@@ -284,11 +285,51 @@
         <button class="btn" id="convRun" disabled>Convert &amp; download .ksplat</button>
         <div class="status" id="convStatus">Drop a file to begin.</div>
       </div>
+
+      <!-- ===== GENERATE (image → 3D) ===== -->
+      <div class="mode" id="mode-generate">
+        <div class="drop" id="genDrop">
+          <div class="ico">⌖</div>
+          <strong>Drop a photo</strong>
+          <span>jpg · png · webp — one clear subject</span>
+          <input type="file" id="genInput" accept="image/*" hidden />
+        </div>
+        <img id="genPreview" alt="" style="display:none;width:100%;border-radius:10px;border:1px solid var(--border)" />
+
+        <div class="group">
+          <div class="group-title">fal.ai access</div>
+          <div class="field">
+            <label class="lbl" for="falKey">API key</label>
+            <input type="password" id="falKey" placeholder="paste your fal key (key_…)" autocomplete="off" />
+            <div class="hint">Used directly from your browser and saved only on this device. For personal use — get one at fal.ai/dashboard/keys. Each run uses your fal credits.</div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">Generation (TripoSplat)</div>
+          <div class="field">
+            <label class="lbl" for="genGaussians">Detail (Gaussians)</label>
+            <select id="genGaussians">
+              <option value="131072">131k — fast</option>
+              <option value="262144" selected>262k — balanced</option>
+              <option value="524288">524k — high detail</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-row"><label class="lbl" for="genSteps">Inference steps</label><span class="val" id="genStepsVal">20</span></div>
+            <input type="range" id="genSteps" min="10" max="40" value="20" />
+            <div class="hint">More steps = better fidelity, longer runtime.</div>
+          </div>
+        </div>
+
+        <button class="btn" id="genRun" disabled>Generate 3D from image</button>
+        <div class="status" id="genStatus">Drop a photo and add your key.</div>
+      </div>
     </div>
 
     <div class="footnote">
       Runs entirely in your browser — nothing is uploaded.<br>
-      Built on <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> by Mark Kellogg (MIT).
+      Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a> (your key, your credits).
     </div>
   </aside>
 
@@ -319,6 +360,20 @@
       </div>
       <div class="log" id="convLog"><span class="t">› ready. drop a .ply or .splat in the panel on the left.</span></div>
     </div>
+
+    <div class="convstage" id="genStage">
+      <div class="conv-head">Image → 3D splat
+        <small>TripoSplat (via fal.ai) turns one photo into a Gaussian-splat .ply, loaded straight into the viewer.</small>
+      </div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <div style="flex:0 0 auto">
+          <div class="stat" style="padding:0;overflow:hidden;width:260px">
+            <img id="genStageImg" alt="" style="display:block;width:260px;height:260px;object-fit:cover;background:#06080c" />
+          </div>
+        </div>
+        <div class="log" id="genLog" style="flex:1;min-width:240px"><span class="t">› drop a photo, paste your fal key, and hit Generate.</span></div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -336,18 +391,21 @@ const formatFromName = (n)=>{const e=extOf(n); return e==='ply'?SF.Ply:e==='spla
 /* ---- tabs ---- */
 const tabs = document.querySelectorAll('.tab');
 const convStage=$('convStage'), emptyState=$('emptyState'), ambient=$('ambient'), stageBar=$('stageBar');
-tabs.forEach(t=>t.addEventListener('click',()=>{
-  tabs.forEach(x=>x.classList.remove('active')); t.classList.add('active');
-  const tab=t.dataset.tab;
+function activateTab(tab){
+  tabs.forEach(x=>x.classList.toggle('active', x.dataset.tab===tab));
   document.querySelectorAll('.mode').forEach(m=>m.classList.remove('active'));
   $('mode-'+tab).classList.add('active');
   const converting = tab==='convert';
+  const generating = tab==='generate';
+  const overlay = converting || generating;     // a panel covers the 3D stage
   convStage.classList.toggle('active',converting);
-  ambient.style.display = (!converting && !viewerActive)?'':'none';
-  $('viewerHost').style.display = converting?'none':'';
-  stageBar.classList.toggle('show', !converting && viewerActive);
-  emptyState.style.display = (converting||viewerActive)?'none':'flex';
-}));
+  $('genStage').classList.toggle('active',generating);
+  ambient.style.display = (!overlay && !viewerActive)?'':'none';
+  $('viewerHost').style.display = overlay?'none':'';
+  stageBar.classList.toggle('show', !overlay && viewerActive);
+  emptyState.style.display = (overlay||viewerActive)?'none':'flex';
+}
+tabs.forEach(t=>t.addEventListener('click',()=>activateTab(t.dataset.tab)));
 
 /* =====================================================
    VIEW — multi-scene layers
@@ -717,6 +775,133 @@ $('convRun').addEventListener('click',async()=>{
   }catch(err){ console.error(err); log('error: '+(err&&err.message?err.message:err),'e'); setConvStatus('Conversion failed — see log.','err'); }
   finally{ btn.disabled=false; }
 });
+
+/* =====================================================
+   GENERATE — image → 3D splat via fal.ai (TripoSplat)
+   ===================================================== */
+const FAL_KEY_STORE='splatstudio.falkey';
+let genImageFile=null, genBusy=false;
+const genLogEl=$('genLog');
+function glog(msg,cls){const s=document.createElement('span');s.className=cls||'t';s.textContent=(genLogEl.textContent?'\n':'')+'› '+msg;genLogEl.appendChild(s);genLogEl.scrollTop=genLogEl.scrollHeight;}
+function setGenStatus(msg,kind){const el=$('genStatus');el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
+function genReady(){ $('genRun').disabled = !(genImageFile && $('falKey').value.trim() && !genBusy); }
+
+try{ const k=localStorage.getItem(FAL_KEY_STORE); if(k) $('falKey').value=k; }catch(e){}
+$('falKey').addEventListener('input',()=>{ try{localStorage.setItem(FAL_KEY_STORE,$('falKey').value.trim());}catch(e){} genReady(); });
+$('genSteps').addEventListener('input',e=>$('genStepsVal').textContent=e.target.value);
+
+wireDrop($('genDrop'),$('genInput'),(files)=>{
+  const f=files[0];
+  if(!f || !f.type.startsWith('image/')){ setGenStatus('That doesn\u2019t look like an image.','err'); return; }
+  genImageFile=f;
+  const url=URL.createObjectURL(f);
+  $('genPreview').src=url; $('genPreview').style.display='block';
+  $('genStageImg').src=url;
+  setGenStatus('Ready: '+f.name,'ok'); glog('image: '+f.name+' ('+fmtBytes(f.size)+')','a');
+  genReady();
+},false);
+
+// downscale to <=1024px and return a base64 data URI (smaller, more reliable upload)
+function imageToDataURL(file, max=1024){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      let {width:w,height:h}=img;
+      const scale=Math.min(1, max/Math.max(w,h));
+      w=Math.round(w*scale); h=Math.round(h*scale);
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      const cx=cv.getContext('2d'); cx.drawImage(img,0,0,w,h);
+      resolve(cv.toDataURL('image/jpeg',0.92));
+    };
+    img.onerror=()=>reject(new Error('could not read image'));
+    img.src=URL.createObjectURL(file);
+  });
+}
+
+const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+
+$('genRun').addEventListener('click',async()=>{
+  const key=$('falKey').value.trim();
+  if(!genImageFile||!key) return;
+  genBusy=true; genReady(); $('genRun').textContent='Generating…';
+  setGenStatus('Generating…','warn');
+
+  const headers={'Authorization':'Key '+key,'Content-Type':'application/json'};
+  const fmt = 'ply';
+  try{
+    glog('preparing image…');
+    const dataUrl=await imageToDataURL(genImageFile,1024);
+    const input={
+      image_url:dataUrl,
+      num_gaussians:parseInt($('genGaussians').value,10),
+      num_inference_steps:parseInt($('genSteps').value,10),
+      output_format:fmt
+    };
+    glog('submitting to fal.ai · tripo3d/triposplat …');
+    const sub=await fetch('https://queue.fal.run/tripo3d/triposplat',{method:'POST',headers,body:JSON.stringify(input)});
+    if(!sub.ok){ throw new Error('submit failed ('+sub.status+') '+(await sub.text()).slice(0,160)); }
+    const subJson=await sub.json();
+    const statusUrl=subJson.status_url, responseUrl=subJson.response_url;
+    glog('queued · request '+(subJson.request_id||'').slice(0,8),'a');
+
+    // poll
+    const t0=Date.now(); let done=false, lastStatus='';
+    while(!done){
+      if(Date.now()-t0>6*60*1000) throw new Error('timed out after 6 min');
+      await sleep(2500);
+      const st=await fetch(statusUrl,{headers});
+      if(!st.ok){ glog('status check '+st.status+'…','w'); continue; }
+      const sj=await st.json();
+      if(sj.status!==lastStatus){
+        lastStatus=sj.status;
+        const secs=((Date.now()-t0)/1000).toFixed(0);
+        if(sj.status==='IN_QUEUE') glog('in queue'+(sj.queue_position!=null?' (pos '+sj.queue_position+')':'')+' · '+secs+'s');
+        else if(sj.status==='IN_PROGRESS') glog('rendering 3D… · '+secs+'s','a');
+      }
+      if(sj.status==='COMPLETED') done=true;
+    }
+
+    glog('fetching result…');
+    const res=await fetch(responseUrl,{headers});
+    if(!res.ok) throw new Error('result fetch failed ('+res.status+')');
+    const data=await res.json();
+    const fileUrl = data && data.model_mesh && data.model_mesh.url;
+    if(!fileUrl) throw new Error('no model file in response');
+    glog('gaussians: '+(data.num_gaussians?fmtNum(data.num_gaussians):'?')+(data.seed!=null?' · seed '+data.seed:''),'g');
+
+    // download the generated splat and load it as a layer
+    glog('downloading splat…');
+    let buf;
+    try{
+      const fileRes=await fetch(fileUrl);
+      if(!fileRes.ok) throw new Error('download '+fileRes.status);
+      buf=await fileRes.arrayBuffer();
+    }catch(dlErr){
+      // CORS or network: give the user a direct link instead of failing silently
+      glog('couldn\u2019t fetch the file directly ('+dlErr.message+').','w');
+      glog('open it here, then drop it into the View tab:','a');
+      glog(fileUrl);
+      setGenStatus('Generated — download link in the log.','warn');
+      genBusy=false; $('genRun').textContent='Generate 3D from image'; genReady();
+      return;
+    }
+
+    const base=(genImageFile.name.replace(/\.[^.]+$/,'')||'generated');
+    const outName=base+'.'+fmt;
+    glog('loading into viewer · '+fmtBytes(buf.byteLength),'g');
+    await addFiles([new File([buf], outName, {type:'application/octet-stream'})]);
+    activateTab('view');
+    setGenStatus('Done — added “'+outName+'” to the scene.','ok');
+  }catch(err){
+    console.error(err);
+    const m=(err&&err.message)?err.message:String(err);
+    glog('error: '+m,'e');
+    setGenStatus(/Failed to fetch|NetworkError/.test(m)?'Network/CORS or bad key — check your fal key.':'Generation failed — see log.','err');
+  }finally{
+    genBusy=false; $('genRun').textContent='Generate 3D from image'; genReady();
+  }
+});
+genReady();
 
 /* ---- shared drag & drop ---- */
 function wireDrop(dropEl,inputEl,onFiles,multi){
