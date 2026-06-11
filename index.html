@@ -222,7 +222,6 @@
           <div class="group-title"><span>Scene layers</span><span class="count" id="layerCount"></span></div>
           <div class="layers" id="layerList"></div>
           <div class="bm-empty" id="layerEmpty">No layers yet. Drop files above.</div>
-          <button class="btn ghost sm" id="applyTransforms" disabled>Apply transforms</button>
         </div>
 
         <div class="group">
@@ -254,7 +253,7 @@
           </div>
           <div class="field">
             <label class="lbl" for="viewUp">Camera up vector</label>
-            <input type="text" id="viewUp" value="0, -1, 0" />
+            <input type="text" id="viewUp" value="0, 1, 0" />
             <div class="presets" id="upPresets">
               <button class="chip" id="chipAuto">⤡ Auto-level</button>
               <button class="chip" data-up="0,1,0">Y-up</button>
@@ -266,6 +265,8 @@
             <div class="hint">Loads auto-leveled. If it looks off, pick an axis or hit Auto-level again.</div>
           </div>
         </div>
+
+        <button class="btn ghost sm" id="applyTransforms" disabled>Apply transforms</button>
 
         <div class="group">
           <div class="group-title"><span>Camera bookmarks</span></div>
