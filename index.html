@@ -32,9 +32,10 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
-  .app{display:flex;height:100vh;height:100dvh;width:100vw}
+  .app{position:relative;height:100vh;height:100dvh;width:100vw;overflow:hidden}
 
-  .sidebar{width:clamp(300px,30vw,360px);min-width:300px;height:100%;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .sidebar{position:absolute;top:0;left:0;bottom:0;z-index:14;width:clamp(320px,30vw,384px);background:rgba(14,16,22,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;transition:transform .3s cubic-bezier(.4,0,.2,1);box-shadow:24px 0 60px rgba(0,0,0,.45)}
+  .app.collapsed .sidebar{transform:translateX(-100%)}
   .brand{padding:22px 22px 16px;border-bottom:1px solid var(--border-soft)}
   .brand .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
   .brand h1{font-family:var(--display);font-weight:600;font-size:22px;margin:6px 0 2px;letter-spacing:-.01em}
@@ -119,7 +120,7 @@
   .footnote a{color:var(--accent-dim);text-decoration:none}
   .footnote a:hover{text-decoration:underline}
 
-  .stage{position:relative;flex:1;height:100%;background:#000;overflow:hidden}
+  .stage{position:absolute;inset:0;background:#000;overflow:hidden}
   #viewerHost{position:absolute;inset:0}
   #viewerHost canvas{display:block}
   #ambient{position:absolute;inset:0;display:block}
@@ -144,9 +145,11 @@
   .modal .qr-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;margin:4px 0 16px}
   .modal .qr-wrap img{width:200px;height:200px;border-radius:12px;background:#fff;padding:10px;box-sizing:border-box}
   /* sidebar collapse */
-  .app.collapsed .sidebar{display:none}
-  .app.collapsed .stage{height:100dvh}
-  .panel-toggle{position:absolute;top:14px;left:14px;z-index:6;font-family:var(--mono);font-size:15px;line-height:1;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);width:34px;height:34px;border-radius:9px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center}
+  .app.collapsed .panel-toggle{display:flex}
+  .drawer-close{position:absolute;top:16px;right:16px;z-index:2;width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:rgba(20,23,31,.7);color:var(--muted);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .drawer-close:hover{color:var(--text);border-color:var(--accent-dim)}
+  .modal .thumb{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:#06080c;margin-bottom:14px;display:block}
+  .panel-toggle{position:absolute;top:14px;left:14px;z-index:13;font-family:var(--mono);font-size:12px;line-height:1;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);height:34px;padding:0 13px;border-radius:9px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s;display:none;align-items:center;justify-content:center;gap:7px}
   .panel-toggle:hover{border-color:var(--accent-dim)}
   /* model-viewer AR overlay */
   .mv-overlay{position:fixed;inset:0;z-index:40;display:none;background:#06070b}
@@ -198,20 +201,16 @@
   ::-webkit-scrollbar-track{background:transparent}
 
   @media (max-width:900px){
-    body{overflow:auto}
-    .app{flex-direction:column;height:auto;min-height:100dvh}
-    .sidebar{width:100%;min-width:0;height:auto;border-right:none;border-bottom:1px solid var(--border)}
-    .stage{height:58dvh;min-height:340px;width:100%}
+    .sidebar{width:min(92vw,400px)}
     .convstage{padding:22px}
     .conv-head{font-size:21px}
   }
   @media (max-width:520px){
-    .sidebar{width:100%}
+    .sidebar{width:88vw}
     .panel-body{padding:14px;gap:15px}
     .brand{padding:18px 16px 14px}
     .stage-bar{top:10px;right:10px}
     .pill{font-size:11px;padding:6px 10px}
-    .stage{height:54dvh;min-height:300px}
     .xyz input{min-width:0}
   }
   @media (prefers-reduced-motion:reduce){ #ambient{display:none} }
@@ -221,6 +220,7 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
+      <button class="drawer-close" id="drawerClose" title="Hide panel">✕</button>
       <div class="eyebrow">Gaussian&nbsp;Splatting&nbsp;·&nbsp;Toolkit</div>
       <h1>Splat&nbsp;Studio<span class="dot">.</span></h1>
       <p>View, compose &amp; convert .ply / .splat / .ksplat</p>
@@ -431,7 +431,7 @@
   </aside>
 
   <main class="stage">
-    <button class="panel-toggle" id="panelToggle" title="Hide / show panel">‹</button>
+    <button class="panel-toggle" id="panelToggle" title="Show controls">☰ Controls</button>
     <div class="load-overlay" id="loadOverlay">
       <div class="load-orb"><div class="ring"></div><div class="core"></div></div>
       <div class="load-text" id="loadText">Loading</div>
@@ -449,6 +449,7 @@
     <div class="modal-back" id="shareModal">
       <div class="modal">
         <h3>Share this scene</h3>
+        <img id="shareThumb" class="thumb" alt="preview" style="display:none" />
         <p>Anyone with the link opens it live in Splat Studio (loaded from your Supabase project).</p>
         <div class="link-row">
           <input type="text" id="shareLink" readonly />
@@ -456,7 +457,8 @@
         </div>
         <div class="qr-wrap"><img id="shareQR" alt="QR code" /></div>
         <div class="btn-row">
-          <button class="btn" id="shareSend">Share / Save</button>
+          <button class="btn" id="shareSend">Share</button>
+          <button class="btn ghost" id="shareSaveQR">Save QR</button>
           <button class="btn ghost" id="shareClose">Close</button>
         </div>
       </div>
@@ -484,6 +486,7 @@
       <div class="ring"></div>
       <h2>No scene loaded</h2>
       <p>Drop splat files (.ply/.splat/.ksplat) or a mesh (.glb/.gltf). Drag to orbit, scroll to zoom.</p>
+      <button class="btn" id="emptyLoad" style="width:auto;margin-top:16px">Load a file</button>
     </div>
 
     <div class="convstage" id="convStage">
@@ -3337,6 +3340,19 @@ $('bmSave').addEventListener('click',doSave);
 $('pillSave').addEventListener('click',doSave);
 $('pillFrame').addEventListener('click',()=>{ if(meshActive) frameMesh(); else frameScene(); });
 
+function captureThumb(maxW){
+  try{
+    let canvas=null;
+    if(meshActive && mesh){ try{ mesh.renderer.render(mesh.scene, mesh.camera); }catch(e){} canvas=mesh.renderer.domElement; }
+    else if(viewerActive && viewer){ try{ viewer.render(); }catch(e){} canvas=viewer.renderer && viewer.renderer.domElement; }
+    if(!canvas || !canvas.width || !canvas.height) return null;
+    const tw=Math.min(maxW||560,canvas.width), th=Math.round(canvas.height*(tw/canvas.width));
+    const c=document.createElement('canvas'); c.width=tw; c.height=th;
+    c.getContext('2d').drawImage(canvas,0,0,tw,th);
+    return c.toDataURL('image/jpeg',0.82);
+  }catch(e){ return null; }
+}
+
 async function shareView(){
   let canvas=null;
   if(meshActive && mesh){ try{ mesh.renderer.render(mesh.scene, mesh.camera); }catch(e){} canvas=mesh.renderer.domElement; }
@@ -3459,6 +3475,7 @@ async function cloudShare(){
   const art=shareableArtifact();
   if(!art){ setViewStatus('Load a scene first.','warn'); return; }
   if(art.extra) setViewStatus('Sharing the first visible layer only.','warn');
+  const thumb=captureThumb(640);
   await ensureFreshToken();
   const H=authHeaders();
   let bytes=art.bytes, ext=art.ext, path=uuid()+'.'+ext;
@@ -3497,7 +3514,7 @@ async function cloudShare(){
     if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${ext}`;
 
     hideLoading();
-    openShareModal(link);
+    openShareModal(link, thumb);
     setViewStatus('Share link ready.','ok');
   }catch(err){
     hideLoading(); console.error(err);
@@ -3510,8 +3527,12 @@ async function cloudShare(){
 }
 $('pillCloud').addEventListener('click',cloudShare);
 
-function openShareModal(link){
+let shareThumbUrl=null;
+function openShareModal(link, thumb){
   $('shareLink').value=link;
+  shareThumbUrl = thumb || null;
+  const ti=$('shareThumb');
+  if(thumb){ ti.src=thumb; ti.style.display=''; } else { ti.style.display='none'; }
   const note=$('shareModal').querySelector('p');
   if(note) note.textContent = loggedIn()
     ? 'Saved to your account — this link stays live until you delete it.'
@@ -3529,21 +3550,28 @@ $('shareCopy').addEventListener('click',async()=>{
 });
 $('shareSend').addEventListener('click',async()=>{
   const link=$('shareLink').value;
-  const qrUrl=$('shareQR') && $('shareQR').dataset.url;
   try{
-    if(qrUrl && navigator.canShare){
-      const blob=await (await fetch(qrUrl)).blob();
-      const file=new File([blob],'splat-studio-qr.png',{type:'image/png'});
+    if(shareThumbUrl && navigator.canShare){
+      const blob=await (await fetch(shareThumbUrl)).blob();
+      const file=new File([blob],'splat-studio-preview.jpg',{type:'image/jpeg'});
       if(navigator.canShare({files:[file]})){
-        await navigator.share({files:[file], text:link, title:'Splat Studio scene'});  // sheet → Save Image / send link
+        await navigator.share({files:[file], text:link, url:link, title:'Splat Studio scene'});  // chat shows preview + link
         return;
       }
     }
     if(navigator.share){ await navigator.share({title:'Splat Studio scene', text:link, url:link}); return; }
-    try{ await navigator.clipboard.writeText(link); }catch(e){}
-    if(qrUrl){ const a=document.createElement('a'); a.href=qrUrl; a.download='splat-studio-qr.png'; a.click(); }
-    $('shareSend').textContent='Copied + QR saved'; setTimeout(()=>$('shareSend').textContent='Share / Save',1500);
+    await navigator.clipboard.writeText(link);
+    $('shareSend').textContent='Link copied'; setTimeout(()=>$('shareSend').textContent='Share',1400);
   }catch(e){ if(e&&e.name==='AbortError') return; }
+});
+$('shareSaveQR').addEventListener('click',async()=>{
+  const url=$('shareQR') && $('shareQR').dataset.url; if(!url){ setViewStatus('QR not ready yet.','warn'); return; }
+  try{
+    const blob=await (await fetch(url)).blob();
+    const file=new File([blob],'splat-studio-qr.png',{type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'Splat Studio QR'}); }
+    else { const a=document.createElement('a'); a.href=url; a.download='splat-studio-qr.png'; a.click(); }
+  }catch(e){ if(e&&e.name==='AbortError') return; const a=document.createElement('a'); a.href=url; a.download='splat-studio-qr.png'; a.click(); }
 });
 
 async function loadFromUrl(url, fmt, name){
@@ -3601,13 +3629,15 @@ $('pillAR').addEventListener('click', async ()=>{
 $('bmName').addEventListener('keydown',e=>{ if(e.key==='Enter') doSave(); });
 
 /* ---- collapse the side panel for a fullscreen preview ---- */
-$('panelToggle').addEventListener('click',()=>{
-  const app=document.querySelector('.app');
-  const collapsed=app.classList.toggle('collapsed');
-  $('panelToggle').textContent = collapsed ? '›' : '‹';
-  $('panelToggle').title = collapsed ? 'Show panel' : 'Hide panel';
+function setDrawer(collapsed){
+  document.querySelector('.app').classList.toggle('collapsed', collapsed);
   setTimeout(()=>window.dispatchEvent(new Event('resize')),60);
-});
+}
+$('panelToggle').addEventListener('click',()=>setDrawer(false));
+$('drawerClose').addEventListener('click',()=>setDrawer(true));
+// start with the preview as the main view on phones/tablets
+if(window.matchMedia('(max-width:900px)').matches) setDrawer(true);
+$('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{ $('viewInput').click(); });
 
 /* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
 let mvLoaded=null, mvBlobUrl=null;
