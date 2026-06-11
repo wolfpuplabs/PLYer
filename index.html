@@ -3440,14 +3440,19 @@ const uuid=()=> (crypto.randomUUID? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxx
 
 function shareableArtifact(){
   if(meshActive && mesh && mesh.sourceBytes){
-    return { bytes:mesh.sourceBytes, ext:'glb', name:(mesh.sourceName||'model.glb').replace(/\.[^.]+$/,'') };
+    return { kind:'mesh', bytes:mesh.sourceBytes, ext:'glb', name:(mesh.sourceName||'model.glb').replace(/\.[^.]+$/,'') };
   }
   if(viewerActive && layers.length){
     const l=layers.find(x=>!x.hidden)||layers[0];
-    const data=l.buffer.bufferData;                          // the .ksplat bytes
-    return { bytes:data, ext:'ksplat', name:(l.name||'scene').replace(/\.[^.]+$/,''), extra:(layers.length>1) };
+    return { kind:'splat', bytes:l.buffer.bufferData, ext:'ksplat', name:(l.name||'scene').replace(/\.[^.]+$/,''), layer:l, extra:(layers.length>1) };
   }
   return null;
+}
+const mb=(b)=>(b.byteLength/1048576).toFixed(1);
+function putObject(path, bytes, H){
+  return fetch(`${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${path}`,{
+    method:'POST', headers:{...H,'Content-Type':'application/octet-stream','x-upsert':'true'}, body:new Blob([bytes])
+  });
 }
 
 async function cloudShare(){
@@ -3456,19 +3461,30 @@ async function cloudShare(){
   if(art.extra) setViewStatus('Sharing the first visible layer only.','warn');
   await ensureFreshToken();
   const H=authHeaders();
-  showLoading('Uploading to cloud', art.name);
+  let bytes=art.bytes, ext=art.ext, path=uuid()+'.'+ext;
+  showLoading('Uploading to cloud', art.name+' · '+mb(bytes)+' MB');
   try{
-    const path=uuid()+'.'+art.ext;
-    const blob=new Blob([art.bytes], {type:'application/octet-stream'});
-    const up=await fetch(`${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${path}`,{
-      method:'POST', headers:{...H,'Content-Type':'application/octet-stream','x-upsert':'true'}, body:blob
-    });
-    if(!up.ok){ throw new Error('storage '+up.status+' — '+(await up.text()).slice(0,160)); }
+    let up=await putObject(path, bytes, H);
+    // too big? for splats, shrink to 8-bit and retry once (often halves the size)
+    if(up.status===413 && art.kind==='splat' && art.layer && art.layer.file){
+      showLoading('Recompressing to fit','8-bit KSPLAT');
+      try{
+        const small=await bufferFromFile(art.layer.file, shCache, 2);
+        bytes=small.bufferData; ext='ksplat'; path=uuid()+'.ksplat';
+        showLoading('Uploading to cloud', art.name+' · '+mb(bytes)+' MB');
+        up=await putObject(path, bytes, H);
+      }catch(e){ /* keep original 413 */ }
+    }
+    if(!up.ok){
+      const t=await up.text();
+      if(up.status===413 || /too large|exceeded/i.test(t)) throw new Error('TOO_BIG:'+mb(bytes));
+      throw new Error('storage '+up.status+' — '+t.slice(0,160));
+    }
     const publicUrl=`${SUPA_URL}/storage/v1/object/public/${SUPA_BUCKET}/${path}`;
 
     // record metadata (gives a short ?share=<id> link); fall back to a direct URL link if the table isn't set up
     let link;
-    const row={ name:art.name, path, format:art.ext, url:publicUrl };
+    const row={ name:art.name, path, format:ext, url:publicUrl };
     if(loggedIn()) row.expires_at=null;            // keep permanently for signed-in users
     try{
       const ins=await fetch(`${SUPA_URL}/rest/v1/shares`,{
@@ -3478,7 +3494,7 @@ async function cloudShare(){
       if(ins.ok){ const rows=await ins.json(); const id=rows&&rows[0]&&rows[0].id;
         link=id ? `${location.origin}${location.pathname}?share=${id}` : null; }
     }catch(e){ /* table optional */ }
-    if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${art.ext}`;
+    if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${ext}`;
 
     hideLoading();
     openShareModal(link);
@@ -3486,7 +3502,8 @@ async function cloudShare(){
   }catch(err){
     hideLoading(); console.error(err);
     let msg=err&&err.message?err.message:'unknown';
-    if(/bucket not found/i.test(msg)) msg='Storage bucket "splats" not found — create a public bucket named "splats" in Supabase → Storage, then retry.';
+    if(msg.indexOf('TOO_BIG:')===0){ msg='Scene is '+msg.slice(8)+' MB — over your Storage limit. In Supabase → Storage → Settings raise "Global file size limit" (free tier max 50 MB), or share a lighter scene. Pro plan needed for >50 MB.'; }
+    else if(/bucket not found/i.test(msg)) msg='Storage bucket "splats" not found — create a public bucket named "splats" in Supabase → Storage, then retry.';
     else if(/row-level security|violates|403|401/i.test(msg)) msg='Permission denied — run the supabase-setup.sql policies in your Supabase SQL editor, then retry.';
     setViewStatus('Cloud share failed: '+msg,'err');
   }
