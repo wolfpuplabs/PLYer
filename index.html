@@ -839,7 +839,11 @@ $('genRun').addEventListener('click',async()=>{
     };
     glog('submitting to fal.ai · tripo3d/triposplat …');
     const sub=await fetch('https://queue.fal.run/tripo3d/triposplat',{method:'POST',headers,body:JSON.stringify(input)});
-    if(!sub.ok){ throw new Error('submit failed ('+sub.status+') '+(await sub.text()).slice(0,160)); }
+    if(!sub.ok){
+      const txt=await sub.text(); let detail=txt;
+      try{ const j=JSON.parse(txt); detail=j.detail||j.message||txt; }catch(e){}
+      const e=new Error(String(detail).slice(0,200)); e.httpStatus=sub.status; throw e;
+    }
     const subJson=await sub.json();
     const statusUrl=subJson.status_url, responseUrl=subJson.response_url;
     glog('queued · request '+(subJson.request_id||'').slice(0,8),'a');
@@ -896,7 +900,11 @@ $('genRun').addEventListener('click',async()=>{
     console.error(err);
     const m=(err&&err.message)?err.message:String(err);
     glog('error: '+m,'e');
-    setGenStatus(/Failed to fetch|NetworkError/.test(m)?'Network/CORS or bad key — check your fal key.':'Generation failed — see log.','err');
+    let status='Generation failed — see log.';
+    if(/lock|exhaust|balance|credit/i.test(m)) status='fal balance empty — top up at fal.ai/dashboard/billing.';
+    else if(err.httpStatus===401||err.httpStatus===403||/unauthor|forbidden|invalid.*key|api key/i.test(m)) status='Key rejected — check your fal API key.';
+    else if(/Failed to fetch|NetworkError|CORS/i.test(m)) status='Network/CORS issue — check connection.';
+    setGenStatus(status,'err');
   }finally{
     genBusy=false; $('genRun').textContent='Generate 3D from image'; genReady();
   }
