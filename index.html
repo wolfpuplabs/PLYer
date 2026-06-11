@@ -217,15 +217,16 @@
           </div>
           <div class="field">
             <label class="lbl" for="viewUp">Camera up vector</label>
-            <input type="text" id="viewUp" value="0, -1, -0.6" />
+            <input type="text" id="viewUp" value="0, -1, 0" />
             <div class="presets" id="upPresets">
-              <button class="chip" data-up="0,-1,-0.6">Default</button>
+              <button class="chip" id="chipAuto">⤡ Auto-level</button>
               <button class="chip" data-up="0,1,0">Y-up</button>
               <button class="chip" data-up="0,-1,0">Y-down</button>
               <button class="chip" data-up="0,0,1">Z-up</button>
               <button class="chip" data-up="0,0,-1">Z-down</button>
+              <button class="chip" data-up="0,-1,-0.6">Tilt</button>
             </div>
-            <div class="hint">If the model loads tilted, pick the axis that matches the capture.</div>
+            <div class="hint">Loads auto-leveled. If it looks off, pick an axis or hit Auto-level again.</div>
           </div>
         </div>
 
@@ -353,7 +354,7 @@ tabs.forEach(t=>t.addEventListener('click',()=>{
    ===================================================== */
 let viewer=null, viewerActive=false;
 let layers=[];           // {id,file,name,buffer,count,hidden,pos,rot,scale,alpha}
-let nextId=1, shCache=0;
+let nextId=1, shCache=0, didAutoLevel=false;
 const host=$('viewerHost'), badge=$('loadBadge');
 
 function parseVec3(str,fb){const p=str.split(',').map(s=>parseFloat(s.trim()));return (p.length===3&&p.every(n=>!isNaN(n)))?p:fb;}
@@ -371,6 +372,7 @@ function bufferFromFile(file, sh){
 async function addFiles(fileList){
   const files=[...fileList].filter(f=>formatFromName(f.name)!==null);
   if(!files.length){ setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.','err'); return; }
+  if(layers.length===0) didAutoLevel=false;   // a fresh scene should auto-level on load
   const sh=parseInt($('viewSH').value,10); shCache=sh;
   badge.classList.add('show'); badge.textContent='parsing…';
   setViewStatus('Parsing '+files.length+' file(s)…','warn');
@@ -414,7 +416,10 @@ async function rebuild(){
   await disposeViewer();
   if(!visible.length){ emptyState.style.display='flex'; ambient.style.display=''; stageBar.classList.remove('show'); badge.classList.remove('show'); return; }
 
-  const up=parseVec3($('viewUp').value,[0,-1,-0.6]);
+  // auto-level the very first build of a fresh scene so the object loads upright
+  if(!didAutoLevel){ autoLevel(); didAutoLevel=true; }
+
+  const up=parseVec3($('viewUp').value,[0,-1,0]);
   badge.classList.add('show'); badge.textContent='building…'; emptyState.style.display='none';
 
   viewer=new GaussianSplats3D.Viewer({
@@ -443,45 +448,79 @@ async function rebuild(){
   stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
 }
 
-function frameScene(){
+function sampleCenters(budget){
   const visible=layers.filter(l=>!l.hidden);
-  if(!viewer||!viewer.camera||!viewer.controls||!visible.length) return;
+  if(!visible.length) return null;
+  const tmp=new THREE.Vector3();
+  const total=visible.reduce((s,l)=>s+l.count,0);
+  const stride=Math.max(1,Math.floor(total/budget));
+  const pts=[];
+  for(const l of visible){
+    const m=new THREE.Matrix4().compose(
+      new THREE.Vector3().fromArray(l.pos),
+      new THREE.Quaternion().fromArray(eulerToQuat(l.rot)),
+      new THREE.Vector3(l.scale,l.scale,l.scale));
+    for(let i=0;i<l.count;i+=stride){ l.buffer.getSplatCenter(i,tmp,m); pts.push(tmp.x,tmp.y,tmp.z); }
+  }
+  return pts;
+}
+
+// Jacobi eigensolver for a symmetric 3x3 matrix
+function jacobiEigen(A){
+  const a=A.map(r=>r.slice()), V=[[1,0,0],[0,1,0],[0,0,1]];
+  for(let it=0;it<100;it++){
+    let p=0,q=1,max=Math.abs(a[0][1]);
+    for(const [i,j] of [[0,1],[0,2],[1,2]]){ if(Math.abs(a[i][j])>max){max=Math.abs(a[i][j]);p=i;q=j;} }
+    if(max<1e-12) break;
+    const phi=0.5*Math.atan2(2*a[p][q],a[q][q]-a[p][p]), c=Math.cos(phi), s=Math.sin(phi);
+    for(let k=0;k<3;k++){const kp=a[k][p],kq=a[k][q];a[k][p]=c*kp-s*kq;a[k][q]=s*kp+c*kq;}
+    for(let k=0;k<3;k++){const pk=a[p][k],qk=a[q][k];a[p][k]=c*pk-s*qk;a[q][k]=s*pk+c*qk;}
+    for(let k=0;k<3;k++){const vp=V[k][p],vq=V[k][q];V[k][p]=c*vp-s*vq;V[k][q]=s*vp+c*vq;}
+  }
+  return [[V[0][0],V[1][0],V[2][0]],[V[0][1],V[1][1],V[2][1]],[V[0][2],V[1][2],V[2][2]]];
+}
+
+// detect the object's own vertical axis from the splat distribution and snap "up" to it
+function autoLevel(){
+  const pts=sampleCenters(20000); if(!pts) return false;
+  const n=pts.length/3; if(n<16) return false;
+  const c=[0,0,0];
+  for(let i=0;i<pts.length;i+=3){c[0]+=pts[i];c[1]+=pts[i+1];c[2]+=pts[i+2];}
+  c[0]/=n;c[1]/=n;c[2]/=n;
+  let xx=0,yy=0,zz=0,xy=0,xz=0,yz=0;
+  for(let i=0;i<pts.length;i+=3){const dx=pts[i]-c[0],dy=pts[i+1]-c[1],dz=pts[i+2]-c[2];xx+=dx*dx;yy+=dy*dy;zz+=dz*dz;xy+=dx*dy;xz+=dx*dz;yz+=dy*dz;}
+  const vecs=jacobiEigen([[xx/n,xy/n,xz/n],[xy/n,yy/n,yz/n],[xz/n,yz/n,zz/n]]);
+  const hint=new THREE.Vector3().fromArray(parseVec3($('viewUp').value,[0,-1,0])).normalize();
+  let best=null,bestDot=-1;
+  for(const v of vecs){ const d=v[0]*hint.x+v[1]*hint.y+v[2]*hint.z; if(Math.abs(d)>bestDot){bestDot=Math.abs(d); best=(d<0)?v.map(x=>-x):v.slice();} }
+  if(!best || bestDot<0.5) return false;   // no axis clearly near vertical → leave as-is
+  $('viewUp').value=best.map(x=>+x.toFixed(3)).join(', ');
+  syncUpChips();
+  return true;
+}
+
+function frameScene(){
+  const pts=sampleCenters(24000);
+  if(!viewer||!viewer.camera||!viewer.controls||!pts) return;
   try{
-    const tmp=new THREE.Vector3();
-    const total=visible.reduce((s,l)=>s+l.count,0);
-    const stride=Math.max(1,Math.floor(total/24000));   // cap work on huge scenes
-    const pts=[];
-    for(const l of visible){
-      const m=new THREE.Matrix4().compose(
-        new THREE.Vector3().fromArray(l.pos),
-        new THREE.Quaternion().fromArray(eulerToQuat(l.rot)),
-        new THREE.Vector3(l.scale,l.scale,l.scale));
-      for(let i=0;i<l.count;i+=stride){ l.buffer.getSplatCenter(i,tmp,m); pts.push(tmp.x,tmp.y,tmp.z); }
-    }
     const n=pts.length/3; if(!n) return;
-    // centroid + 90th-percentile radius → ignore stray outlier splats
     const c=new THREE.Vector3();
     for(let i=0;i<pts.length;i+=3){ c.x+=pts[i]; c.y+=pts[i+1]; c.z+=pts[i+2]; }
     c.multiplyScalar(1/n);
     const d=new Float64Array(n);
-    for(let i=0,j=0;i<pts.length;i+=3,j++){
-      const dx=pts[i]-c.x,dy=pts[i+1]-c.y,dz=pts[i+2]-c.z; d[j]=Math.hypot(dx,dy,dz);
-    }
+    for(let i=0,j=0;i<pts.length;i+=3,j++){ const dx=pts[i]-c.x,dy=pts[i+1]-c.y,dz=pts[i+2]-c.z; d[j]=Math.hypot(dx,dy,dz); }
     d.sort();
     const radius=Math.max(d[Math.floor(n*0.90)]||d[n-1]||1,1e-3);
 
     const cam=viewer.camera;
-    const vfov=cam.fov*Math.PI/180;
-    const hfov=2*Math.atan(Math.tan(vfov/2)*(cam.aspect||1));
+    const vfov=cam.fov*Math.PI/180, hfov=2*Math.atan(Math.tan(vfov/2)*(cam.aspect||1));
     const dist=radius/Math.sin(Math.min(vfov,hfov)/2)*1.15;
 
-    // build a clean 3/4 view relative to the scene's up vector
-    const up=new THREE.Vector3().fromArray(parseVec3($('viewUp').value,[0,-1,-0.6])).normalize();
+    const up=new THREE.Vector3().fromArray(parseVec3($('viewUp').value,[0,-1,0])).normalize();
     let ref=new THREE.Vector3(0,0,1); if(Math.abs(up.dot(ref))>0.9) ref.set(1,0,0);
     const side=new THREE.Vector3().crossVectors(up,ref).normalize();
     const fwd=new THREE.Vector3().crossVectors(side,up).normalize();
-    const dir=new THREE.Vector3().copy(fwd).multiplyScalar(0.80)
-                .addScaledVector(side,0.45).addScaledVector(up,-0.30).normalize();
+    const dir=new THREE.Vector3().copy(fwd).multiplyScalar(0.80).addScaledVector(side,0.45).addScaledVector(up,-0.30).normalize();
 
     cam.up.copy(up);
     cam.position.copy(c).addScaledVector(dir,dist);
@@ -553,16 +592,22 @@ $('applyTransforms').addEventListener('click',async()=>{ await rebuild(); setVie
 $('viewUp').addEventListener('change',async()=>{ syncUpChips(); if(layers.length){ await rebuild(); frameScene(); } });
 
 function syncUpChips(){
-  const norm=(s)=>parseVec3(s,[0,-1,-0.6]).map(n=>+n.toFixed(3)).join(',');
+  const norm=(s)=>parseVec3(s,[0,-1,0]).map(n=>+n.toFixed(3)).join(',');
   const cur=norm($('viewUp').value);
-  document.querySelectorAll('#upPresets .chip').forEach(ch=>ch.classList.toggle('active', norm(ch.dataset.up)===cur));
+  document.querySelectorAll('#upPresets .chip[data-up]').forEach(ch=>ch.classList.toggle('active', norm(ch.dataset.up)===cur));
 }
-document.querySelectorAll('#upPresets .chip').forEach(ch=>{
+document.querySelectorAll('#upPresets .chip[data-up]').forEach(ch=>{
   ch.addEventListener('click',async()=>{
     $('viewUp').value=ch.dataset.up.split(',').join(', ');
     syncUpChips();
     if(layers.length){ await rebuild(); frameScene(); }
   });
+});
+$('chipAuto').addEventListener('click',async()=>{
+  if(!layers.length){ setViewStatus('Load a scene first.','warn'); return; }
+  const ok=autoLevel();
+  await rebuild(); frameScene();
+  setViewStatus(ok?'Auto-leveled to the object\u2019s vertical axis.':'Couldn\u2019t detect a clear vertical — try a preset.', ok?'ok':'warn');
 });
 syncUpChips();
 $('viewSH').addEventListener('change',async()=>{
