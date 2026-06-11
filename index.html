@@ -32,9 +32,9 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
-  .app{display:flex;height:100vh;width:100vw}
+  .app{display:flex;height:100vh;height:100dvh;width:100vw}
 
-  .sidebar{width:360px;min-width:360px;height:100%;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+  .sidebar{width:clamp(300px,30vw,360px);min-width:300px;height:100%;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .brand{padding:22px 22px 16px;border-bottom:1px solid var(--border-soft)}
   .brand .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
   .brand h1{font-family:var(--display);font-weight:600;font-size:22px;margin:6px 0 2px;letter-spacing:-.01em}
@@ -81,6 +81,10 @@
   .btn.ghost{background:var(--raised);color:var(--text);border:1px solid var(--border)}
   .btn.ghost:hover{border-color:var(--accent-dim)}
   .btn.sm{padding:8px;font-size:12px}
+  .presets{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);border-radius:7px;padding:5px 9px;cursor:pointer;transition:.15s}
+  .chip:hover{color:var(--text);border-color:var(--accent-dim)}
+  .chip.active{color:#1a0a26;background:var(--accent);border-color:var(--accent)}
 
   .status{font-family:var(--mono);font-size:11.5px;min-height:16px;color:var(--muted);word-break:break-word}
   .status.ok{color:var(--ok)} .status.err{color:var(--err)} .status.warn{color:var(--warn)}
@@ -148,11 +152,22 @@
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}
   ::-webkit-scrollbar-track{background:transparent}
 
-  @media (max-width:820px){
+  @media (max-width:900px){
     body{overflow:auto}
-    .app{flex-direction:column;height:auto;min-height:100vh}
-    .sidebar{width:100%;min-width:0;height:auto}
-    .stage{height:62vh;min-height:380px}
+    .app{flex-direction:column;height:auto;min-height:100dvh}
+    .sidebar{width:100%;min-width:0;height:auto;border-right:none;border-bottom:1px solid var(--border)}
+    .stage{height:58dvh;min-height:340px;width:100%}
+    .convstage{padding:22px}
+    .conv-head{font-size:21px}
+  }
+  @media (max-width:520px){
+    .sidebar{width:100%}
+    .panel-body{padding:14px;gap:15px}
+    .brand{padding:18px 16px 14px}
+    .stage-bar{top:10px;right:10px}
+    .pill{font-size:11px;padding:6px 10px}
+    .stage{height:54dvh;min-height:300px}
+    .xyz input{min-width:0}
   }
   @media (prefers-reduced-motion:reduce){ #ambient{display:none} }
 </style>
@@ -203,7 +218,14 @@
           <div class="field">
             <label class="lbl" for="viewUp">Camera up vector</label>
             <input type="text" id="viewUp" value="0, -1, -0.6" />
-            <div class="hint">Most captures are Y-down; tweak if the scene loads upside-down.</div>
+            <div class="presets" id="upPresets">
+              <button class="chip" data-up="0,-1,-0.6">Default</button>
+              <button class="chip" data-up="0,1,0">Y-up</button>
+              <button class="chip" data-up="0,-1,0">Y-down</button>
+              <button class="chip" data-up="0,0,1">Z-up</button>
+              <button class="chip" data-up="0,0,-1">Z-down</button>
+            </div>
+            <div class="hint">If the model loads tilted, pick the axis that matches the capture.</div>
           </div>
         </div>
 
@@ -413,29 +435,58 @@ async function rebuild(){
   viewer.start();
   viewerActive=true;
   ambient.style.display='none';
-  // keep the user's camera across rebuilds; auto-frame only on the first build
+  // make sure the renderer matches the stage size first (fixes embedded / iPad browsers)…
+  window.dispatchEvent(new Event('resize'));
+  // …then keep the user's camera across rebuilds, auto-framing only on the first build
   if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
-  // make sure the renderer matches the stage size (fixes embedded / iPad browsers)
-  requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));
   badge.classList.remove('show');
   stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
 }
 
 function frameScene(){
-  if(!viewer||!viewer.getSplatMesh||!viewer.camera||!viewer.controls) return;
+  const visible=layers.filter(l=>!l.hidden);
+  if(!viewer||!viewer.camera||!viewer.controls||!visible.length) return;
   try{
-    const box=viewer.getSplatMesh().computeBoundingBox(true);
-    const center=new THREE.Vector3(); box.getCenter(center);
-    const size=new THREE.Vector3();  box.getSize(size);
-    const radius=Math.max(size.length()/2,1e-4);
+    const tmp=new THREE.Vector3();
+    const total=visible.reduce((s,l)=>s+l.count,0);
+    const stride=Math.max(1,Math.floor(total/24000));   // cap work on huge scenes
+    const pts=[];
+    for(const l of visible){
+      const m=new THREE.Matrix4().compose(
+        new THREE.Vector3().fromArray(l.pos),
+        new THREE.Quaternion().fromArray(eulerToQuat(l.rot)),
+        new THREE.Vector3(l.scale,l.scale,l.scale));
+      for(let i=0;i<l.count;i+=stride){ l.buffer.getSplatCenter(i,tmp,m); pts.push(tmp.x,tmp.y,tmp.z); }
+    }
+    const n=pts.length/3; if(!n) return;
+    // centroid + 90th-percentile radius → ignore stray outlier splats
+    const c=new THREE.Vector3();
+    for(let i=0;i<pts.length;i+=3){ c.x+=pts[i]; c.y+=pts[i+1]; c.z+=pts[i+2]; }
+    c.multiplyScalar(1/n);
+    const d=new Float64Array(n);
+    for(let i=0,j=0;i<pts.length;i+=3,j++){
+      const dx=pts[i]-c.x,dy=pts[i+1]-c.y,dz=pts[i+2]-c.z; d[j]=Math.hypot(dx,dy,dz);
+    }
+    d.sort();
+    const radius=Math.max(d[Math.floor(n*0.90)]||d[n-1]||1,1e-3);
+
     const cam=viewer.camera;
     const vfov=cam.fov*Math.PI/180;
     const hfov=2*Math.atan(Math.tan(vfov/2)*(cam.aspect||1));
-    const dist=radius/Math.sin(Math.min(vfov,hfov)/2)*1.25;
-    const dir=new THREE.Vector3(-1,-5,6).normalize();   // same pleasant 3/4 angle as the default
-    cam.position.copy(center).addScaledVector(dir,dist);
-    cam.near=Math.max(dist/200,0.005); cam.far=dist*200; cam.updateProjectionMatrix();
-    viewer.controls.target.copy(center);
+    const dist=radius/Math.sin(Math.min(vfov,hfov)/2)*1.15;
+
+    // build a clean 3/4 view relative to the scene's up vector
+    const up=new THREE.Vector3().fromArray(parseVec3($('viewUp').value,[0,-1,-0.6])).normalize();
+    let ref=new THREE.Vector3(0,0,1); if(Math.abs(up.dot(ref))>0.9) ref.set(1,0,0);
+    const side=new THREE.Vector3().crossVectors(up,ref).normalize();
+    const fwd=new THREE.Vector3().crossVectors(side,up).normalize();
+    const dir=new THREE.Vector3().copy(fwd).multiplyScalar(0.80)
+                .addScaledVector(side,0.45).addScaledVector(up,-0.30).normalize();
+
+    cam.up.copy(up);
+    cam.position.copy(c).addScaledVector(dir,dist);
+    cam.near=Math.max(dist/300,0.005); cam.far=dist*300; cam.updateProjectionMatrix();
+    viewer.controls.target.copy(c);
     viewer.controls.update();
   }catch(e){ console.warn('frameScene failed',e); }
 }
@@ -499,7 +550,21 @@ function renderLayerList(){
 }
 
 $('applyTransforms').addEventListener('click',async()=>{ await rebuild(); setViewStatus('Transforms applied.','ok'); });
-$('viewUp').addEventListener('change',async()=>{ if(layers.length) await rebuild(); });
+$('viewUp').addEventListener('change',async()=>{ syncUpChips(); if(layers.length){ await rebuild(); frameScene(); } });
+
+function syncUpChips(){
+  const norm=(s)=>parseVec3(s,[0,-1,-0.6]).map(n=>+n.toFixed(3)).join(',');
+  const cur=norm($('viewUp').value);
+  document.querySelectorAll('#upPresets .chip').forEach(ch=>ch.classList.toggle('active', norm(ch.dataset.up)===cur));
+}
+document.querySelectorAll('#upPresets .chip').forEach(ch=>{
+  ch.addEventListener('click',async()=>{
+    $('viewUp').value=ch.dataset.up.split(',').join(', ');
+    syncUpChips();
+    if(layers.length){ await rebuild(); frameScene(); }
+  });
+});
+syncUpChips();
 $('viewSH').addEventListener('change',async()=>{
   if(!layers.length){ shCache=parseInt($('viewSH').value,10); return; }
   // SH degree affects parsing → re-parse cached files
