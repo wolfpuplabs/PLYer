@@ -21,58 +21,28 @@
 
 <style>
   :root{
-    --bg:#0a0c10;
-    --panel:#12161f;
-    --panel-2:#171c27;
-    --raised:#1d2330;
-    --border:#272e3c;
-    --border-soft:#1f2531;
-    --text:#e9edf4;
-    --muted:#8b95a7;
-    --faint:#5b6577;
-    --accent:#c879ff;
-    --accent-dim:#8a4fc0;
-    --ok:#5fd3a0;
-    --warn:#ffb454;
-    --err:#ff6b7a;
+    --bg:#0a0c10; --panel:#12161f; --panel-2:#171c27; --raised:#1d2330;
+    --border:#272e3c; --border-soft:#1f2531;
+    --text:#e9edf4; --muted:#8b95a7; --faint:#5b6577;
+    --accent:#c879ff; --accent-dim:#8a4fc0; --ok:#5fd3a0; --warn:#ffb454; --err:#ff6b7a;
     --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
     --display:"Space Grotesk",system-ui,sans-serif;
     --ui:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{
-    margin:0;background:var(--bg);color:var(--text);
-    font-family:var(--ui);font-size:14px;line-height:1.5;
-    -webkit-font-smoothing:antialiased;overflow:hidden;
-  }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
   .app{display:flex;height:100vh;width:100vw}
 
-  /* ---------- sidebar ---------- */
-  .sidebar{
-    width:340px;min-width:340px;height:100%;
-    background:var(--panel);border-right:1px solid var(--border);
-    display:flex;flex-direction:column;overflow-y:auto;
-  }
+  .sidebar{width:360px;min-width:360px;height:100%;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
   .brand{padding:22px 22px 16px;border-bottom:1px solid var(--border-soft)}
-  .brand .eyebrow{
-    font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;
-    text-transform:uppercase;color:var(--faint);
-  }
-  .brand h1{
-    font-family:var(--display);font-weight:600;font-size:22px;
-    margin:6px 0 2px;letter-spacing:-.01em;
-  }
+  .brand .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+  .brand h1{font-family:var(--display);font-weight:600;font-size:22px;margin:6px 0 2px;letter-spacing:-.01em}
   .brand h1 .dot{color:var(--accent)}
   .brand p{margin:0;color:var(--muted);font-size:12.5px}
 
   .tabs{display:flex;gap:6px;padding:16px 18px 0}
-  .tab{
-    flex:1;text-align:center;padding:9px 0;border-radius:8px;cursor:pointer;
-    font-family:var(--mono);font-size:12px;letter-spacing:.04em;
-    color:var(--muted);background:transparent;border:1px solid transparent;
-    transition:.15s;user-select:none;
-  }
+  .tab{flex:1;text-align:center;padding:9px 0;border-radius:8px;cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--muted);background:transparent;border:1px solid transparent;transition:.15s;user-select:none}
   .tab:hover{color:var(--text)}
   .tab.active{color:var(--text);background:var(--raised);border-color:var(--border)}
   .tab.active .num{color:var(--accent)}
@@ -82,129 +52,96 @@
   .mode{display:none;flex-direction:column;gap:18px}
   .mode.active{display:flex}
 
-  /* drop target */
-  .drop{
-    border:1.5px dashed var(--border);border-radius:12px;
-    padding:22px 16px;text-align:center;cursor:pointer;
-    transition:.15s;background:var(--panel-2);
-  }
+  .drop{border:1.5px dashed var(--border);border-radius:12px;padding:20px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--panel-2)}
   .drop:hover{border-color:var(--accent-dim);background:var(--raised)}
   .drop.over{border-color:var(--accent);background:rgba(200,121,255,.06)}
   .drop .ico{font-size:24px;opacity:.7;margin-bottom:8px}
   .drop strong{display:block;font-size:13px;font-weight:600}
   .drop span{display:block;color:var(--faint);font-size:11px;margin-top:4px;font-family:var(--mono)}
-  .drop .file{
-    margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--accent);
-    word-break:break-all;
-  }
+  .drop .file{margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--accent);word-break:break-all}
 
   .group{display:flex;flex-direction:column;gap:13px}
-  .group-title{
-    font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
-    text-transform:uppercase;color:var(--faint);
-    padding-bottom:6px;border-bottom:1px solid var(--border-soft);
-  }
+  .group-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);padding-bottom:6px;border-bottom:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center}
+  .group-title .count{color:var(--accent);letter-spacing:.05em}
   .field{display:flex;flex-direction:column;gap:6px}
   .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
   label.lbl{font-size:12.5px;color:var(--muted)}
   .hint{font-size:10.5px;color:var(--faint);font-family:var(--mono);line-height:1.4}
   .val{font-family:var(--mono);font-size:12px;color:var(--text);min-width:42px;text-align:right}
 
-  select,input[type=text]{
-    width:100%;background:var(--bg);color:var(--text);
-    border:1px solid var(--border);border-radius:8px;padding:8px 10px;
-    font-family:var(--mono);font-size:12.5px;outline:none;transition:.15s;
-  }
+  select,input[type=text]{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:12.5px;outline:none;transition:.15s}
   select:focus,input[type=text]:focus{border-color:var(--accent-dim)}
-  input[type=range]{
-    -webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;
-    background:var(--border);outline:none;
-  }
-  input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;
-    background:var(--accent);cursor:pointer;border:2px solid var(--bg);
-  }
-  input[type=range]::-moz-range-thumb{
-    width:15px;height:15px;border-radius:50%;background:var(--accent);
-    cursor:pointer;border:2px solid var(--bg);
-  }
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;background:var(--border);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg)}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg)}
 
-  .btn{
-    width:100%;padding:12px;border-radius:9px;border:none;cursor:pointer;
-    font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.02em;
-    background:var(--accent);color:#1a0a26;transition:.15s;
-  }
+  .btn{width:100%;padding:12px;border-radius:9px;border:none;cursor:pointer;font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.02em;background:var(--accent);color:#1a0a26;transition:.15s}
   .btn:hover{filter:brightness(1.08)}
   .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
   .btn.ghost{background:var(--raised);color:var(--text);border:1px solid var(--border)}
   .btn.ghost:hover{border-color:var(--accent-dim)}
+  .btn.sm{padding:8px;font-size:12px}
 
-  .status{
-    font-family:var(--mono);font-size:11.5px;min-height:16px;
-    color:var(--muted);word-break:break-word;
-  }
+  .status{font-family:var(--mono);font-size:11.5px;min-height:16px;color:var(--muted);word-break:break-word}
   .status.ok{color:var(--ok)} .status.err{color:var(--err)} .status.warn{color:var(--warn)}
 
-  .footnote{
-    padding:14px 18px;border-top:1px solid var(--border-soft);
-    font-size:10.5px;color:var(--faint);font-family:var(--mono);line-height:1.6;
-  }
+  /* ---- layer list ---- */
+  .layers{display:flex;flex-direction:column;gap:8px}
+  .layer{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .layer-head{display:flex;align-items:center;gap:9px;padding:9px 11px}
+  .dot-toggle{width:14px;height:14px;border-radius:50%;flex:0 0 auto;cursor:pointer;border:1px solid var(--accent-dim);background:var(--accent);transition:.15s}
+  .dot-toggle.off{background:transparent}
+  .layer-name{flex:1;min-width:0;font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .layer-meta{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:6px;line-height:1}
+  .icon-btn:hover{color:var(--text);background:var(--raised)}
+  .icon-btn.x:hover{color:var(--err)}
+  .layer-body{display:none;padding:0 11px 12px;flex-direction:column;gap:9px;border-top:1px solid var(--border-soft);margin-top:2px;padding-top:10px}
+  .layer.open .layer-body{display:flex}
+  .xyz{display:flex;align-items:center;gap:6px}
+  .xyz .tag{font-family:var(--mono);font-size:10px;color:var(--faint);width:26px}
+  .xyz input{padding:5px 7px;font-size:11px;text-align:center}
+  .mini-row{display:flex;gap:8px;align-items:center}
+  .mini-row .field{flex:1}
+  .mini-row .lbl{font-size:11px}
+
+  /* ---- bookmarks ---- */
+  .bm-list{display:flex;flex-direction:column;gap:6px}
+  .bm{display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:7px 10px}
+  .bm-name{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bm-empty{font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+  .footnote{padding:14px 18px;border-top:1px solid var(--border-soft);font-size:10.5px;color:var(--faint);font-family:var(--mono);line-height:1.6}
   .footnote a{color:var(--accent-dim);text-decoration:none}
   .footnote a:hover{text-decoration:underline}
 
-  /* ---------- stage ---------- */
   .stage{position:relative;flex:1;height:100%;background:#000;overflow:hidden}
   #viewerHost{position:absolute;inset:0}
   #viewerHost canvas{display:block}
-
-  /* ambient empty-state field */
   #ambient{position:absolute;inset:0;display:block}
-  .empty{
-    position:absolute;inset:0;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;gap:12px;pointer-events:none;
-    text-align:center;padding:24px;
-  }
-  .empty .ring{
-    width:54px;height:54px;border-radius:50%;
-    background:radial-gradient(circle at 50% 45%,rgba(200,121,255,.55),rgba(200,121,255,0) 70%);
-    box-shadow:0 0 40px 6px rgba(200,121,255,.25);margin-bottom:4px;
-  }
+  .empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;text-align:center;padding:24px}
+  .empty .ring{width:54px;height:54px;border-radius:50%;background:radial-gradient(circle at 50% 45%,rgba(200,121,255,.55),rgba(200,121,255,0) 70%);box-shadow:0 0 40px 6px rgba(200,121,255,.25);margin-bottom:4px}
   .empty h2{font-family:var(--display);font-weight:500;font-size:18px;margin:0;color:#cfd6e2}
   .empty p{margin:0;color:var(--faint);font-size:12.5px;max-width:300px;font-family:var(--mono)}
 
-  /* converter stage */
-  .convstage{
-    position:absolute;inset:0;display:none;flex-direction:column;
-    padding:34px;gap:20px;overflow:auto;background:
-      radial-gradient(120% 80% at 20% 0%,rgba(200,121,255,.05),transparent 60%),var(--bg);
-  }
+  .stage-bar{position:absolute;top:14px;right:14px;z-index:6;display:none;gap:8px}
+  .stage-bar.show{display:flex}
+  .pill{font-family:var(--mono);font-size:11.5px;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);padding:7px 12px;border-radius:8px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s}
+  .pill:hover{border-color:var(--accent-dim)}
+
+  .convstage{position:absolute;inset:0;display:none;flex-direction:column;padding:34px;gap:20px;overflow:auto;background:radial-gradient(120% 80% at 20% 0%,rgba(200,121,255,.05),transparent 60%),var(--bg)}
   .convstage.active{display:flex}
   .conv-head{font-family:var(--display);font-size:26px;font-weight:600;letter-spacing:-.01em}
   .conv-head small{display:block;font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:400;margin-top:4px}
-
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-  .stat{
-    background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:15px 16px;
-  }
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:15px 16px}
   .stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
   .stat .v{font-family:var(--mono);font-size:21px;font-weight:600;margin-top:7px;color:var(--text)}
-  .stat .v.accent{color:var(--accent)}
-  .stat .v.ok{color:var(--ok)}
+  .stat .v.accent{color:var(--accent)} .stat .v.ok{color:var(--ok)}
+  .log{flex:1;min-height:120px;background:#06080c;border:1px solid var(--border);border-radius:11px;padding:14px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);overflow:auto;white-space:pre-wrap;line-height:1.7}
+  .log .t{color:var(--faint)} .log .a{color:var(--accent)} .log .g{color:var(--ok)} .log .w{color:var(--warn)} .log .e{color:var(--err)}
 
-  .log{
-    flex:1;min-height:120px;background:#06080c;border:1px solid var(--border);border-radius:11px;
-    padding:14px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);
-    overflow:auto;white-space:pre-wrap;line-height:1.7;
-  }
-  .log .t{color:var(--faint)}
-  .log .a{color:var(--accent)} .log .g{color:var(--ok)} .log .w{color:var(--warn)} .log .e{color:var(--err)}
-
-  .loadbadge{
-    position:absolute;top:16px;left:16px;z-index:5;
-    font-family:var(--mono);font-size:11px;color:var(--muted);
-    background:rgba(10,12,16,.7);border:1px solid var(--border);
-    padding:6px 11px;border-radius:7px;backdrop-filter:blur(6px);display:none;
-  }
+  .loadbadge{position:absolute;top:16px;left:16px;z-index:5;font-family:var(--mono);font-size:11px;color:var(--muted);background:rgba(10,12,16,.7);border:1px solid var(--border);padding:6px 11px;border-radius:7px;backdrop-filter:blur(6px);display:none}
   .loadbadge.show{display:block}
 
   ::-webkit-scrollbar{width:10px;height:10px}
@@ -214,23 +151,19 @@
   @media (max-width:820px){
     body{overflow:auto}
     .app{flex-direction:column;height:auto;min-height:100vh}
-    .sidebar{width:100%;min-width:0;height:auto;max-height:none}
+    .sidebar{width:100%;min-width:0;height:auto}
     .stage{height:62vh;min-height:380px}
   }
-  @media (prefers-reduced-motion:reduce){
-    #ambient{display:none}
-  }
+  @media (prefers-reduced-motion:reduce){ #ambient{display:none} }
 </style>
 </head>
 <body>
 <div class="app">
-
-  <!-- ================= SIDEBAR ================= -->
   <aside class="sidebar">
     <div class="brand">
       <div class="eyebrow">Gaussian&nbsp;Splatting&nbsp;·&nbsp;Toolkit</div>
       <h1>Splat&nbsp;Studio<span class="dot">.</span></h1>
-      <p>View &amp; convert .ply / .splat / .ksplat in the browser</p>
+      <p>View, compose &amp; convert .ply / .splat / .ksplat</p>
     </div>
 
     <div class="tabs">
@@ -240,28 +173,24 @@
 
     <div class="panel-body">
 
-      <!-- ---------- VIEW MODE ---------- -->
+      <!-- ===== VIEW ===== -->
       <div class="mode active" id="mode-view">
         <div class="drop" id="viewDrop">
           <div class="ico">◈</div>
-          <strong>Drop a splat file</strong>
-          <span>.ply · .splat · .ksplat</span>
-          <div class="file" id="viewFileName"></div>
-          <input type="file" id="viewInput" accept=".ply,.splat,.ksplat" hidden />
+          <strong>Drop splat files</strong>
+          <span>.ply · .splat · .ksplat — multiple at once</span>
+          <input type="file" id="viewInput" accept=".ply,.splat,.ksplat" multiple hidden />
+        </div>
+
+        <div class="group">
+          <div class="group-title"><span>Scene layers</span><span class="count" id="layerCount"></span></div>
+          <div class="layers" id="layerList"></div>
+          <div class="bm-empty" id="layerEmpty">No layers yet. Drop files above.</div>
+          <button class="btn ghost sm" id="applyTransforms" disabled>Apply transforms</button>
         </div>
 
         <div class="group">
           <div class="group-title">Render options</div>
-
-          <div class="field">
-            <div class="field-row">
-              <label class="lbl" for="viewAlpha">Alpha removal threshold</label>
-              <span class="val" id="viewAlphaVal">1</span>
-            </div>
-            <input type="range" id="viewAlpha" min="0" max="255" value="1" />
-            <div class="hint">Discards splats below this opacity (0–255). Higher = lighter scene.</div>
-          </div>
-
           <div class="field">
             <label class="lbl" for="viewSH">Spherical harmonics</label>
             <select id="viewSH">
@@ -269,21 +198,29 @@
               <option value="1">Degree 1 — view-dependent</option>
               <option value="2">Degree 2 — full detail</option>
             </select>
-            <div class="hint">Only affects files that store SH coefficients.</div>
+            <div class="hint">Changing this re-parses files. Only matters if they store SH.</div>
           </div>
-
           <div class="field">
             <label class="lbl" for="viewUp">Camera up vector</label>
             <input type="text" id="viewUp" value="0, -1, -0.6" />
-            <div class="hint">Most splat captures are Y-down; tweak if the scene loads upside-down.</div>
+            <div class="hint">Most captures are Y-down; tweak if the scene loads upside-down.</div>
           </div>
         </div>
 
-        <button class="btn ghost" id="viewReset" disabled>Clear scene</button>
-        <div class="status" id="viewStatus">Waiting for a file…</div>
+        <div class="group">
+          <div class="group-title"><span>Camera bookmarks</span></div>
+          <div class="mini-row">
+            <input type="text" id="bmName" placeholder="view name" />
+            <button class="btn ghost sm" id="bmSave" disabled style="width:auto;white-space:nowrap">Save view</button>
+          </div>
+          <div class="bm-list" id="bmList"></div>
+          <div class="bm-empty" id="bmEmpty">Saved views are stored in this browser.</div>
+        </div>
+
+        <div class="status" id="viewStatus">Waiting for files…</div>
       </div>
 
-      <!-- ---------- CONVERT MODE ---------- -->
+      <!-- ===== CONVERT ===== -->
       <div class="mode" id="mode-convert">
         <div class="drop" id="convDrop">
           <div class="ico">⧉</div>
@@ -292,10 +229,8 @@
           <div class="file" id="convFileName"></div>
           <input type="file" id="convInput" accept=".ply,.splat" hidden />
         </div>
-
         <div class="group">
           <div class="group-title">Conversion settings</div>
-
           <div class="field">
             <label class="lbl" for="convComp">Compression level</label>
             <select id="convComp">
@@ -304,16 +239,11 @@
               <option value="2">2 — 8-bit (smallest)</option>
             </select>
           </div>
-
           <div class="field">
-            <div class="field-row">
-              <label class="lbl" for="convAlpha">Alpha removal threshold</label>
-              <span class="val" id="convAlphaVal">1</span>
-            </div>
+            <div class="field-row"><label class="lbl" for="convAlpha">Alpha removal threshold</label><span class="val" id="convAlphaVal">1</span></div>
             <input type="range" id="convAlpha" min="0" max="255" value="1" />
             <div class="hint">Prunes near-transparent splats before packing.</div>
           </div>
-
           <div class="field">
             <label class="lbl" for="convSH">Spherical harmonics degree</label>
             <select id="convSH">
@@ -322,24 +252,15 @@
               <option value="2">2 — keep degree 2</option>
             </select>
           </div>
-
           <div class="field-row">
-            <div class="field" style="flex:1">
-              <label class="lbl" for="convBlock">Block size</label>
-              <input type="text" id="convBlock" value="5.0" />
-            </div>
-            <div class="field" style="flex:1">
-              <label class="lbl" for="convBucket">Bucket size</label>
-              <input type="text" id="convBucket" value="256" />
-            </div>
+            <div class="field" style="flex:1"><label class="lbl" for="convBlock">Block size</label><input type="text" id="convBlock" value="5.0" /></div>
+            <div class="field" style="flex:1"><label class="lbl" for="convBucket">Bucket size</label><input type="text" id="convBucket" value="256" /></div>
           </div>
           <div class="hint">Spatial bucketing for compression. Defaults match the reference tool.</div>
         </div>
-
         <button class="btn" id="convRun" disabled>Convert &amp; download .ksplat</button>
         <div class="status" id="convStatus">Drop a file to begin.</div>
       </div>
-
     </div>
 
     <div class="footnote">
@@ -348,20 +269,19 @@
     </div>
   </aside>
 
-  <!-- ================= STAGE ================= -->
   <main class="stage">
     <div class="loadbadge" id="loadBadge">loading…</div>
-
-    <!-- viewer -->
+    <div class="stage-bar" id="stageBar">
+      <div class="pill" id="pillSave">＋ Save view</div>
+    </div>
     <canvas id="ambient"></canvas>
     <div id="viewerHost"></div>
     <div class="empty" id="emptyState">
       <div class="ring"></div>
       <h2>No scene loaded</h2>
-      <p>Drop a .ply, .splat or .ksplat file to render it. Drag to orbit, scroll to zoom.</p>
+      <p>Drop one or more splat files to render them. Drag to orbit, scroll to zoom.</p>
     </div>
 
-    <!-- converter -->
     <div class="convstage" id="convStage">
       <div class="conv-head">PLY / SPLAT → KSPLAT
         <small>Strips and compresses Gaussian data into the .ksplat format for fast loading.</small>
@@ -383,295 +303,309 @@ import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 import * as THREE from 'three';
 
 const SF = GaussianSplats3D.SceneFormat;
-
-/* ---------- helpers ---------- */
 const $ = (id) => document.getElementById(id);
-const fmtBytes = (b) => {
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-  if (b < 1073741824) return (b/1048576).toFixed(2) + ' MB';
-  return (b/1073741824).toFixed(2) + ' GB';
-};
-const fmtNum = (n) => n.toLocaleString('en-US');
-const extOf = (name) => name.toLowerCase().split('.').pop();
-const formatFromName = (name) => {
-  const e = extOf(name);
-  if (e === 'ply') return SF.Ply;
-  if (e === 'splat') return SF.Splat;
-  if (e === 'ksplat') return SF.KSplat;
-  return null;
-};
+const fmtBytes = (b)=> b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':b<1073741824?(b/1048576).toFixed(2)+' MB':(b/1073741824).toFixed(2)+' GB';
+const fmtNum = (n)=> n.toLocaleString('en-US');
+const extOf = (n)=> n.toLowerCase().split('.').pop();
+const formatFromName = (n)=>{const e=extOf(n); return e==='ply'?SF.Ply:e==='splat'?SF.Splat:e==='ksplat'?SF.KSplat:null;};
 
-/* ---------- tab switching ---------- */
+/* ---- tabs ---- */
 const tabs = document.querySelectorAll('.tab');
-const convStage = $('convStage');
-const emptyState = $('emptyState');
-const ambient = $('ambient');
-tabs.forEach(t => t.addEventListener('click', () => {
-  tabs.forEach(x => x.classList.remove('active'));
-  t.classList.add('active');
-  const tab = t.dataset.tab;
-  document.querySelectorAll('.mode').forEach(m => m.classList.remove('active'));
-  $('mode-' + tab).classList.add('active');
-  const converting = tab === 'convert';
-  convStage.classList.toggle('active', converting);
-  // hide viewer visuals while on convert tab
-  ambient.style.display = converting ? 'none' : '';
-  emptyState.style.display = (converting || viewerActive) ? 'none' : 'flex';
-  $('viewerHost').style.display = converting ? 'none' : '';
+const convStage=$('convStage'), emptyState=$('emptyState'), ambient=$('ambient'), stageBar=$('stageBar');
+tabs.forEach(t=>t.addEventListener('click',()=>{
+  tabs.forEach(x=>x.classList.remove('active')); t.classList.add('active');
+  const tab=t.dataset.tab;
+  document.querySelectorAll('.mode').forEach(m=>m.classList.remove('active'));
+  $('mode-'+tab).classList.add('active');
+  const converting = tab==='convert';
+  convStage.classList.toggle('active',converting);
+  ambient.style.display = converting?'none':'';
+  $('viewerHost').style.display = converting?'none':'';
+  stageBar.classList.toggle('show', !converting && viewerActive);
+  emptyState.style.display = (converting||viewerActive)?'none':'flex';
 }));
 
 /* =====================================================
-   VIEWER
+   VIEW — multi-scene layers
    ===================================================== */
-let viewer = null;
-let viewerActive = false;
-const host = $('viewerHost');
-const badge = $('loadBadge');
+let viewer=null, viewerActive=false;
+let layers=[];           // {id,file,name,buffer,count,hidden,pos,rot,scale,alpha}
+let nextId=1, shCache=0;
+const host=$('viewerHost'), badge=$('loadBadge');
 
-function parseVec3(str, fallback){
-  const p = str.split(',').map(s => parseFloat(s.trim()));
-  if (p.length === 3 && p.every(n => !isNaN(n))) return p;
-  return fallback;
+function parseVec3(str,fb){const p=str.split(',').map(s=>parseFloat(s.trim()));return (p.length===3&&p.every(n=>!isNaN(n)))?p:fb;}
+
+function bufferFromFile(file, sh){
+  const fmt=formatFromName(file.name);
+  return file.arrayBuffer().then(data=>{
+    if(fmt===SF.Ply)  return GaussianSplats3D.PlyLoader.loadFromFileData(data,0,0,true,sh,0,new THREE.Vector3(),undefined,undefined);
+    if(fmt===SF.Splat)return GaussianSplats3D.SplatLoader.loadFromFileData(data,0,0,true,0,new THREE.Vector3(),undefined,undefined);
+    if(fmt===SF.KSplat)return GaussianSplats3D.KSplatLoader.loadFromFileData(data);
+    throw new Error('unsupported file: '+file.name);
+  });
+}
+
+async function addFiles(fileList){
+  const files=[...fileList].filter(f=>formatFromName(f.name)!==null);
+  if(!files.length){ setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.','err'); return; }
+  const sh=parseInt($('viewSH').value,10); shCache=sh;
+  badge.classList.add('show'); badge.textContent='parsing…';
+  setViewStatus('Parsing '+files.length+' file(s)…','warn');
+  try{
+    for(const file of files){
+      const buffer=await bufferFromFile(file, sh);
+      layers.push({id:nextId++, file, name:file.name, buffer, count:buffer.getSplatCount(),
+                   hidden:false, pos:[0,0,0], rot:[0,0,0], scale:1, alpha:1});
+    }
+    renderLayerList();
+    await rebuild();
+    setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok');
+  }catch(err){
+    console.error(err); badge.classList.remove('show');
+    setViewStatus('Could not load: '+(err&&err.message?err.message:'unknown'),'err');
+  }
+}
+
+const totalSplats=()=>layers.filter(l=>!l.hidden).reduce((s,l)=>s+l.count,0);
+
+function captureCam(){
+  if(!viewer||!viewer.camera||!viewer.controls) return null;
+  return { pos:viewer.camera.position.toArray(), up:viewer.camera.up.toArray(), target:viewer.controls.target.toArray() };
+}
+function applyCam(c){
+  if(!c||!viewer||!viewer.camera||!viewer.controls) return;
+  viewer.camera.position.fromArray(c.pos);
+  viewer.camera.up.fromArray(c.up);
+  viewer.controls.target.fromArray(c.target);
+  viewer.controls.update();
 }
 
 async function disposeViewer(){
-  if (viewer){
-    try { await viewer.dispose(); } catch(e){ /* ignore */ }
-    viewer = null;
-  }
-  host.innerHTML = '';
-  viewerActive = false;
+  if(viewer){ try{await viewer.dispose();}catch(e){} viewer=null; }
+  host.innerHTML=''; viewerActive=false;
 }
 
-async function loadScene(file){
-  const format = formatFromName(file.name);
-  if (format === null){
-    setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.', 'err');
-    return;
-  }
-  setViewStatus('Preparing renderer…');
-  badge.classList.add('show'); badge.textContent = 'loading…';
-  emptyState.style.display = 'none';
-
+async function rebuild(){
+  const prevCam=captureCam();
+  const visible=layers.filter(l=>!l.hidden);
   await disposeViewer();
+  if(!visible.length){ emptyState.style.display='flex'; stageBar.classList.remove('show'); badge.classList.remove('show'); return; }
 
-  const up = parseVec3($('viewUp').value, [0,-1,-0.6]);
-  const sh = parseInt($('viewSH').value, 10);
-  const alpha = parseInt($('viewAlpha').value, 10);
+  const up=parseVec3($('viewUp').value,[0,-1,-0.6]);
+  badge.classList.add('show'); badge.textContent='building…'; emptyState.style.display='none';
 
-  try {
-    viewer = new GaussianSplats3D.Viewer({
-      rootElement: host,
-      sharedMemoryForWorkers: false,   // required when not cross-origin isolated (local files)
-      useBuiltInControls: true,
-      cameraUp: up,
-      initialCameraPosition: [-1, -4, 6],
-      initialCameraLookAt: [0, 1, 0],
-      sphericalHarmonicsDegree: sh
-    });
-
-    const url = URL.createObjectURL(file);
-    await viewer.addSplatScene(url, {
-      format,
-      splatAlphaRemovalThreshold: alpha,
-      showLoadingUI: true,
-      progressiveLoad: false
-    });
-    URL.revokeObjectURL(url);
-
-    viewer.start();
-    viewerActive = true;
-    $('viewReset').disabled = false;
-    badge.classList.remove('show');
-    setViewStatus('Rendering · ' + file.name, 'ok');
-  } catch (err){
-    console.error(err);
-    badge.classList.remove('show');
-    await disposeViewer();
-    emptyState.style.display = 'flex';
-    setViewStatus('Could not load: ' + (err && err.message ? err.message : 'unknown error'), 'err');
-  }
-}
-
-function setViewStatus(msg, kind){
-  const el = $('viewStatus');
-  el.textContent = msg;
-  el.className = 'status' + (kind ? ' ' + kind : '');
-}
-
-/* viewer inputs */
-$('viewAlpha').addEventListener('input', e => $('viewAlphaVal').textContent = e.target.value);
-$('viewReset').addEventListener('click', async () => {
-  await disposeViewer();
-  $('viewFileName').textContent = '';
-  $('viewReset').disabled = true;
-  emptyState.style.display = 'flex';
-  setViewStatus('Scene cleared.');
-});
-
-wireDrop($('viewDrop'), $('viewInput'), (file) => {
-  $('viewFileName').textContent = file.name;
-  loadScene(file);
-});
-
-/* =====================================================
-   CONVERTER
-   ===================================================== */
-let convFile = null;
-const logEl = $('convLog');
-function log(msg, cls){
-  const span = document.createElement('span');
-  span.className = cls || 't';
-  span.textContent = (logEl.textContent ? '\n' : '') + '› ' + msg;
-  logEl.appendChild(span);
-  logEl.scrollTop = logEl.scrollHeight;
-}
-function setConvStatus(msg, kind){
-  const el = $('convStatus');
-  el.textContent = msg;
-  el.className = 'status' + (kind ? ' ' + kind : '');
-}
-
-$('convAlpha').addEventListener('input', e => $('convAlphaVal').textContent = e.target.value);
-
-wireDrop($('convDrop'), $('convInput'), (file) => {
-  const fmt = formatFromName(file.name);
-  if (fmt !== SF.Ply && fmt !== SF.Splat){
-    setConvStatus('Pick a .ply or .splat file to convert.', 'err');
-    return;
-  }
-  convFile = file;
-  $('convFileName').textContent = file.name;
-  $('convRun').disabled = false;
-  setConvStatus('Ready: ' + file.name, 'ok');
-  log('loaded ' + file.name + '  (' + fmtBytes(file.size) + ')', 'a');
-});
-
-$('convRun').addEventListener('click', async () => {
-  if (!convFile) return;
-  const btn = $('convRun');
-  btn.disabled = true;
-  setConvStatus('Converting…', 'warn');
-
-  const compression = parseInt($('convComp').value, 10);
-  const alpha = parseInt($('convAlpha').value, 10);
-  const sh = parseInt($('convSH').value, 10);
-  const blockSize = parseFloat($('convBlock').value) || 5.0;
-  const bucketSize = parseInt($('convBucket').value, 10) || 256;
-  const format = formatFromName(convFile.name);
-
-  try {
-    log('reading file…');
-    const buffer = await convFile.arrayBuffer();
-
-    // yield so the UI can paint the "Converting…" state
-    await new Promise(r => setTimeout(r, 16));
-
-    log('parsing ' + (format === SF.Ply ? 'PLY' : 'SPLAT') + ' → uncompressed splat array…');
-    let splatArray;
-    if (format === SF.Ply){
-      splatArray = GaussianSplats3D.PlyParser.parseToUncompressedSplatArray(buffer, sh);
-    } else {
-      splatArray = GaussianSplats3D.SplatParser.parseStandardSplatToUncompressedSplatArray(buffer);
-    }
-    const inCount = splatArray.splatCount;
-    log(fmtNum(inCount) + ' splats parsed', 'g');
-
-    log('packing → .ksplat  (compression ' + compression + ', SH ' + sh + ')…');
-    const generator = GaussianSplats3D.SplatBufferGenerator.getStandardGenerator(
-      alpha, compression, 0, new THREE.Vector3(0,0,0), blockSize, bucketSize
-    );
-    const splatBuffer = generator.generateFromUncompressedSplatArray(splatArray);
-
-    const outCount = splatBuffer.getSplatCount();
-    const outBytes = splatBuffer.bufferData.byteLength;
-    const inBytes = convFile.size;
-    const pct = ((1 - outBytes / inBytes) * 100);
-
-    // stats
-    $('stIn').textContent = fmtNum(inCount);
-    $('stOut').textContent = fmtNum(outCount);
-    $('stInSize').textContent = fmtBytes(inBytes);
-    $('stOutSize').textContent = fmtBytes(outBytes);
-    const ratioEl = $('stRatio');
-    ratioEl.textContent = (pct >= 0 ? '−' : '+') + Math.abs(pct).toFixed(1) + '%';
-    ratioEl.className = 'v ' + (pct >= 0 ? 'ok' : 'accent');
-
-    log(fmtNum(outCount) + ' splats packed · ' + fmtBytes(outBytes), 'g');
-
-    const outName = convFile.name.replace(/\.[^.]+$/, '') + '.ksplat';
-    GaussianSplats3D.KSplatLoader.downloadFile(splatBuffer, outName);
-    log('download started: ' + outName, 'a');
-    setConvStatus('Done — ' + outName + ' downloaded.', 'ok');
-  } catch (err){
-    console.error(err);
-    log('error: ' + (err && err.message ? err.message : err), 'e');
-    setConvStatus('Conversion failed — see log.', 'err');
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-/* =====================================================
-   shared drag & drop wiring
-   ===================================================== */
-function wireDrop(dropEl, inputEl, onFile){
-  dropEl.addEventListener('click', () => inputEl.click());
-  inputEl.addEventListener('change', () => {
-    if (inputEl.files && inputEl.files[0]) onFile(inputEl.files[0]);
+  viewer=new GaussianSplats3D.Viewer({
+    rootElement:host, sharedMemoryForWorkers:false, useBuiltInControls:true,
+    cameraUp:up, initialCameraPosition:[-1,-4,6], initialCameraLookAt:[0,1,0],
+    sphericalHarmonicsDegree:shCache
   });
-  ['dragenter','dragover'].forEach(ev =>
-    dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.add('over'); }));
-  ['dragleave','dragend','drop'].forEach(ev =>
-    dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.remove('over'); }));
-  dropEl.addEventListener('drop', e => {
-    const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) onFile(f);
+
+  const buffers=visible.map(l=>l.buffer);
+  const opts=visible.map(l=>({
+    position:l.pos,
+    rotation:eulerToQuat(l.rot),
+    scale:[l.scale,l.scale,l.scale],
+    splatAlphaRemovalThreshold:l.alpha
+  }));
+
+  await viewer.addSplatBuffers(buffers, opts, true, true, true, false, false);
+  viewer.start();
+  viewerActive=true;
+  if(prevCam) applyCam(prevCam);
+  badge.classList.remove('show');
+  stageBar.classList.add('show'); $('bmSave').disabled=false;
+}
+
+function eulerToQuat(deg){
+  const e=new THREE.Euler(deg[0]*Math.PI/180,deg[1]*Math.PI/180,deg[2]*Math.PI/180,'XYZ');
+  const q=new THREE.Quaternion().setFromEuler(e);
+  return [q.x,q.y,q.z,q.w];
+}
+
+function setViewStatus(msg,kind){const el=$('viewStatus');el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
+
+/* ---- layer list UI ---- */
+function renderLayerList(){
+  const list=$('layerList'); list.innerHTML='';
+  $('layerEmpty').style.display = layers.length?'none':'block';
+  $('layerCount').textContent = layers.length?layers.length+' layer'+(layers.length>1?'s':''):'';
+  $('applyTransforms').disabled = !layers.length;
+  layers.forEach(l=>{
+    const row=document.createElement('div'); row.className='layer'; row.dataset.id=l.id;
+    row.innerHTML=`
+      <div class="layer-head">
+        <div class="dot-toggle ${l.hidden?'off':''}" title="Show / hide"></div>
+        <div style="flex:1;min-width:0">
+          <div class="layer-name" title="${l.name}">${l.name}</div>
+          <div class="layer-meta">${fmtNum(l.count)} splats</div>
+        </div>
+        <button class="icon-btn caret" title="Transform">⌄</button>
+        <button class="icon-btn x" title="Remove">✕</button>
+      </div>
+      <div class="layer-body">
+        <div class="xyz"><span class="tag">pos</span>
+          <input type="text" data-k="pos" data-i="0" value="${l.pos[0]}">
+          <input type="text" data-k="pos" data-i="1" value="${l.pos[1]}">
+          <input type="text" data-k="pos" data-i="2" value="${l.pos[2]}"></div>
+        <div class="xyz"><span class="tag">rot°</span>
+          <input type="text" data-k="rot" data-i="0" value="${l.rot[0]}">
+          <input type="text" data-k="rot" data-i="1" value="${l.rot[1]}">
+          <input type="text" data-k="rot" data-i="2" value="${l.rot[2]}"></div>
+        <div class="mini-row">
+          <div class="field"><label class="lbl">Scale</label><input type="text" data-k="scale" value="${l.scale}"></div>
+          <div class="field"><label class="lbl">Alpha cutoff <span class="val" data-alphaval>${l.alpha}</span></label>
+            <input type="range" min="0" max="255" value="${l.alpha}" data-k="alpha"></div>
+        </div>
+      </div>`;
+
+    row.querySelector('.dot-toggle').addEventListener('click',async()=>{ l.hidden=!l.hidden; renderLayerList(); await rebuild(); setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok'); });
+    row.querySelector('.caret').addEventListener('click',()=>row.classList.toggle('open'));
+    row.querySelector('.x').addEventListener('click',async()=>{ layers=layers.filter(x=>x.id!==l.id); renderLayerList(); await rebuild(); if(!layers.length) setViewStatus('All layers cleared.'); else setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok'); });
+
+    row.querySelectorAll('input[data-k]').forEach(inp=>{
+      inp.addEventListener('input',e=>{
+        const k=inp.dataset.k;
+        if(k==='pos'||k==='rot'){ l[k][+inp.dataset.i]=parseFloat(inp.value)||0; }
+        else if(k==='scale'){ l.scale=parseFloat(inp.value)||1; }
+        else if(k==='alpha'){ l.alpha=parseInt(inp.value,10); row.querySelector('[data-alphaval]').textContent=l.alpha; }
+      });
+    });
+    list.appendChild(row);
   });
 }
 
+$('applyTransforms').addEventListener('click',async()=>{ await rebuild(); setViewStatus('Transforms applied.','ok'); });
+$('viewUp').addEventListener('change',async()=>{ if(layers.length) await rebuild(); });
+$('viewSH').addEventListener('change',async()=>{
+  if(!layers.length){ shCache=parseInt($('viewSH').value,10); return; }
+  // SH degree affects parsing → re-parse cached files
+  const sh=parseInt($('viewSH').value,10); shCache=sh;
+  badge.classList.add('show'); badge.textContent='re-parsing…'; setViewStatus('Re-parsing for SH '+sh+'…','warn');
+  try{ for(const l of layers){ l.buffer=await bufferFromFile(l.file,sh); l.count=l.buffer.getSplatCount(); }
+       renderLayerList(); await rebuild(); setViewStatus('Updated to SH '+sh+'.','ok'); }
+  catch(err){ badge.classList.remove('show'); setViewStatus('Re-parse failed: '+err.message,'err'); }
+});
+
+wireDrop($('viewDrop'),$('viewInput'),addFiles,true);
+
 /* =====================================================
-   ambient splat field (empty-state signature)
+   CAMERA BOOKMARKS
    ===================================================== */
+const BM_KEY='splatstudio.bookmarks';
+let bookmarks=loadBookmarks();
+function loadBookmarks(){ try{return JSON.parse(localStorage.getItem(BM_KEY))||[];}catch(e){return [];} }
+function saveBookmarks(){ try{localStorage.setItem(BM_KEY,JSON.stringify(bookmarks));}catch(e){} }
+
+function renderBookmarks(){
+  const list=$('bmList'); list.innerHTML='';
+  $('bmEmpty').style.display = bookmarks.length?'none':'block';
+  bookmarks.forEach((b,idx)=>{
+    const row=document.createElement('div'); row.className='bm';
+    row.innerHTML=`<span class="bm-name" title="${b.name}">${b.name}</span>
+      <button class="icon-btn go" title="Go to view">↗</button>
+      <button class="icon-btn x" title="Delete">✕</button>`;
+    row.querySelector('.go').addEventListener('click',()=>flyTo(b));
+    row.querySelector('.x').addEventListener('click',()=>{ bookmarks.splice(idx,1); saveBookmarks(); renderBookmarks(); });
+    list.appendChild(row);
+  });
+}
+function doSave(){
+  const c=captureCam();
+  if(!c){ setViewStatus('Load a scene before saving a view.','warn'); return; }
+  const name=($('bmName').value.trim())||('View '+(bookmarks.length+1));
+  bookmarks.push({name, ...c}); saveBookmarks(); renderBookmarks(); $('bmName').value='';
+  setViewStatus('Saved view: '+name,'ok');
+}
+$('bmSave').addEventListener('click',doSave);
+$('pillSave').addEventListener('click',doSave);
+$('bmName').addEventListener('keydown',e=>{ if(e.key==='Enter') doSave(); });
+
+let flyRAF=null;
+function flyTo(b){
+  if(!viewer||!viewer.camera||!viewer.controls) return;
+  if(flyRAF) cancelAnimationFrame(flyRAF);
+  const cam=viewer.camera, ctr=viewer.controls;
+  const p0=cam.position.clone(), t0=ctr.target.clone();
+  const p1=new THREE.Vector3().fromArray(b.pos), t1=new THREE.Vector3().fromArray(b.target);
+  cam.up.fromArray(b.up);
+  const dur=600, start=performance.now();
+  const ease=x=>1-Math.pow(1-x,3);
+  (function step(now){
+    const k=ease(Math.min(1,(now-start)/dur));
+    cam.position.lerpVectors(p0,p1,k);
+    ctr.target.lerpVectors(t0,t1,k);
+    ctr.update();
+    if(k<1) flyRAF=requestAnimationFrame(step);
+  })(start);
+}
+renderBookmarks();
+
+/* =====================================================
+   CONVERTER  (unchanged logic)
+   ===================================================== */
+let convFile=null; const logEl=$('convLog');
+function log(msg,cls){const s=document.createElement('span');s.className=cls||'t';s.textContent=(logEl.textContent?'\n':'')+'› '+msg;logEl.appendChild(s);logEl.scrollTop=logEl.scrollHeight;}
+function setConvStatus(msg,kind){const el=$('convStatus');el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
+$('convAlpha').addEventListener('input',e=>$('convAlphaVal').textContent=e.target.value);
+
+wireDrop($('convDrop'),$('convInput'),(files)=>{
+  const file=files[0]; const fmt=formatFromName(file.name);
+  if(fmt!==SF.Ply&&fmt!==SF.Splat){ setConvStatus('Pick a .ply or .splat file to convert.','err'); return; }
+  convFile=file; $('convFileName').textContent=file.name; $('convRun').disabled=false;
+  setConvStatus('Ready: '+file.name,'ok'); log('loaded '+file.name+'  ('+fmtBytes(file.size)+')','a');
+},false);
+
+$('convRun').addEventListener('click',async()=>{
+  if(!convFile) return; const btn=$('convRun'); btn.disabled=true; setConvStatus('Converting…','warn');
+  const compression=parseInt($('convComp').value,10), alpha=parseInt($('convAlpha').value,10), sh=parseInt($('convSH').value,10);
+  const blockSize=parseFloat($('convBlock').value)||5.0, bucketSize=parseInt($('convBucket').value,10)||256;
+  const format=formatFromName(convFile.name);
+  try{
+    log('reading file…'); const buffer=await convFile.arrayBuffer(); await new Promise(r=>setTimeout(r,16));
+    log('parsing '+(format===SF.Ply?'PLY':'SPLAT')+' → uncompressed splat array…');
+    let splatArray = format===SF.Ply
+      ? GaussianSplats3D.PlyParser.parseToUncompressedSplatArray(buffer,sh)
+      : GaussianSplats3D.SplatParser.parseStandardSplatToUncompressedSplatArray(buffer);
+    const inCount=splatArray.splatCount; log(fmtNum(inCount)+' splats parsed','g');
+    log('packing → .ksplat  (compression '+compression+', SH '+sh+')…');
+    const generator=GaussianSplats3D.SplatBufferGenerator.getStandardGenerator(alpha,compression,0,new THREE.Vector3(0,0,0),blockSize,bucketSize);
+    const splatBuffer=generator.generateFromUncompressedSplatArray(splatArray);
+    const outCount=splatBuffer.getSplatCount(), outBytes=splatBuffer.bufferData.byteLength, inBytes=convFile.size;
+    const pct=(1-outBytes/inBytes)*100;
+    $('stIn').textContent=fmtNum(inCount); $('stOut').textContent=fmtNum(outCount);
+    $('stInSize').textContent=fmtBytes(inBytes); $('stOutSize').textContent=fmtBytes(outBytes);
+    const r=$('stRatio'); r.textContent=(pct>=0?'−':'+')+Math.abs(pct).toFixed(1)+'%'; r.className='v '+(pct>=0?'ok':'accent');
+    log(fmtNum(outCount)+' splats packed · '+fmtBytes(outBytes),'g');
+    const outName=convFile.name.replace(/\.[^.]+$/,'')+'.ksplat';
+    GaussianSplats3D.KSplatLoader.downloadFile(splatBuffer,outName);
+    log('download started: '+outName,'a'); setConvStatus('Done — '+outName+' downloaded.','ok');
+  }catch(err){ console.error(err); log('error: '+(err&&err.message?err.message:err),'e'); setConvStatus('Conversion failed — see log.','err'); }
+  finally{ btn.disabled=false; }
+});
+
+/* ---- shared drag & drop ---- */
+function wireDrop(dropEl,inputEl,onFiles,multi){
+  dropEl.addEventListener('click',()=>inputEl.click());
+  inputEl.addEventListener('change',()=>{ if(inputEl.files&&inputEl.files.length){ onFiles(inputEl.files); inputEl.value=''; } });
+  ['dragenter','dragover'].forEach(ev=>dropEl.addEventListener(ev,e=>{e.preventDefault();dropEl.classList.add('over');}));
+  ['dragleave','dragend','drop'].forEach(ev=>dropEl.addEventListener(ev,e=>{e.preventDefault();dropEl.classList.remove('over');}));
+  dropEl.addEventListener('drop',e=>{ const fs=e.dataTransfer.files; if(fs&&fs.length) onFiles(multi?fs:[fs[0]]); });
+}
+
+/* ---- ambient field ---- */
 (function ambientField(){
-  const c = ambient, ctx = c.getContext('2d');
-  let w, h, blobs, raf;
-  const palette = ['#c879ff','#7a6bff','#ff8fd0','#6fd0ff','#ffd27a'];
-  function resize(){
-    w = c.width = c.clientWidth * devicePixelRatio;
-    h = c.height = c.clientHeight * devicePixelRatio;
-  }
-  function init(){
-    resize();
-    blobs = Array.from({length:34}, () => ({
-      x: Math.random()*w, y: Math.random()*h,
-      r: (40 + Math.random()*120) * devicePixelRatio,
-      vx: (Math.random()-.5)*0.25*devicePixelRatio,
-      vy: (Math.random()-.5)*0.25*devicePixelRatio,
-      col: palette[(Math.random()*palette.length)|0],
-      a: 0.05 + Math.random()*0.10
-    }));
-  }
-  function frame(){
-    ctx.clearRect(0,0,w,h);
-    ctx.globalCompositeOperation = 'lighter';
-    for (const b of blobs){
-      b.x += b.vx; b.y += b.vy;
-      if (b.x < -b.r) b.x = w+b.r; if (b.x > w+b.r) b.x = -b.r;
-      if (b.y < -b.r) b.y = h+b.r; if (b.y > h+b.r) b.y = -b.r;
-      const g = ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r);
-      g.addColorStop(0, b.col + Math.round(b.a*255).toString(16).padStart(2,'0'));
-      g.addColorStop(1, b.col + '00');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
-    }
-    raf = requestAnimationFrame(frame);
-  }
-  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-    init(); frame();
-    window.addEventListener('resize', () => { cancelAnimationFrame(raf); init(); frame(); });
-  }
+  const c=ambient,ctx=c.getContext('2d'); let w,h,blobs,raf;
+  const palette=['#c879ff','#7a6bff','#ff8fd0','#6fd0ff','#ffd27a'];
+  function resize(){ w=c.width=c.clientWidth*devicePixelRatio; h=c.height=c.clientHeight*devicePixelRatio; }
+  function init(){ resize(); blobs=Array.from({length:34},()=>({x:Math.random()*w,y:Math.random()*h,r:(40+Math.random()*120)*devicePixelRatio,vx:(Math.random()-.5)*.25*devicePixelRatio,vy:(Math.random()-.5)*.25*devicePixelRatio,col:palette[(Math.random()*palette.length)|0],a:.05+Math.random()*.10})); }
+  function frame(){ ctx.clearRect(0,0,w,h); ctx.globalCompositeOperation='lighter';
+    for(const b of blobs){ b.x+=b.vx;b.y+=b.vy;
+      if(b.x<-b.r)b.x=w+b.r; if(b.x>w+b.r)b.x=-b.r; if(b.y<-b.r)b.y=h+b.r; if(b.y>h+b.r)b.y=-b.r;
+      const g=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r);
+      g.addColorStop(0,b.col+Math.round(b.a*255).toString(16).padStart(2,'0')); g.addColorStop(1,b.col+'00');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
+    raf=requestAnimationFrame(frame); }
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){ init();frame(); window.addEventListener('resize',()=>{cancelAnimationFrame(raf);init();frame();}); }
 })();
 </script>
 </body>
