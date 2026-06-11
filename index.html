@@ -128,10 +128,19 @@
   .empty h2{font-family:var(--display);font-weight:500;font-size:18px;margin:0;color:#cfd6e2}
   .empty p{margin:0;color:var(--faint);font-size:12.5px;max-width:300px;font-family:var(--mono)}
 
-  .stage-bar{position:absolute;top:14px;right:14px;z-index:6;display:none;gap:8px}
+  .stage-bar{position:absolute;top:14px;right:14px;z-index:6;display:none;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:70vw}
   .stage-bar.show{display:flex}
   .pill{font-family:var(--mono);font-size:11.5px;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);padding:7px 12px;border-radius:8px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s}
   .pill:hover{border-color:var(--accent-dim)}
+  .modal-back{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(6,7,11,.66);backdrop-filter:blur(6px)}
+  .modal-back.show{display:flex;animation:loadFade .2s ease}
+  .modal{width:100%;max-width:440px;background:#12141b;border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+  .modal h3{font-family:var(--display);font-size:18px;margin:0 0 4px;color:#eef1f6}
+  .modal p{font-size:12.5px;color:var(--muted);margin:0 0 16px;line-height:1.5}
+  .modal .link-row{display:flex;gap:8px;margin-bottom:14px}
+  .modal input{flex:1;min-width:0;font-family:var(--mono);font-size:12px;color:var(--text);background:#0c0e13;border:1px solid var(--border);border-radius:9px;padding:11px 12px}
+  .modal .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+  .modal .btn-row .btn{flex:1;white-space:nowrap}
   /* three.js-injected START AR / AR NOT SUPPORTED button, restyled to match */
   #viewerHost button.xr-start{
     position:absolute!important; bottom:22px!important; left:50%!important; transform:translateX(-50%)!important;
@@ -409,11 +418,26 @@
     <div class="stage-bar" id="stageBar">
       <div class="pill" id="pillAR" style="display:none">⛶ AR</div>
       <div class="pill" id="pillShare" style="display:none">⇪ Share</div>
+      <div class="pill" id="pillCloud" style="display:none">☁ Link</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
     </div>
     <canvas id="ambient"></canvas>
     <div id="viewerHost"></div>
+    <div class="modal-back" id="shareModal">
+      <div class="modal">
+        <h3>Share this scene</h3>
+        <p>Anyone with the link opens it live in Splat Studio (loaded from your Supabase project).</p>
+        <div class="link-row">
+          <input type="text" id="shareLink" readonly />
+          <button class="btn ghost sm" id="shareCopy" style="width:auto;white-space:nowrap">Copy</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="shareSend">Share link…</button>
+          <button class="btn ghost" id="shareClose">Close</button>
+        </div>
+      </div>
+    </div>
     <div class="empty" id="emptyState">
       <div class="ring"></div>
       <h2>No scene loaded</h2>
@@ -643,6 +667,8 @@ async function loadMeshFromArrayBuffer(buf, name){
   showLoading('Loading mesh','GLB / GLTF'); emptyState.style.display='none';
   try{
     const m=await startMeshMode();
+    m.sourceBytes = (buf instanceof ArrayBuffer) ? buf.slice(0) : buf;   // kept for cloud share
+    m.sourceName = name || 'model.glb';
     const loader=new m.deps.GLTFLoader();
     try{ const d=new m.deps.DRACOLoader(); d.setDecoderPath(MESH_CDN+'libs/draco/'); loader.setDRACOLoader(d); }catch(e){}
     const gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
@@ -651,7 +677,7 @@ async function loadMeshFromArrayBuffer(buf, name){
     m.group.add(obj);
     frameMesh();
     hideLoading(); ambient.style.display='none';
-    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display='';
+    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display=''; $('pillCloud').style.display='';
     if(typeof arVisible==='function') arVisible();
     setViewStatus('Mesh loaded · '+(name||'model'),'ok');
     window.dispatchEvent(new Event('resize'));
@@ -724,7 +750,7 @@ async function rebuild(){
     if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
     hideLoading();
   }
-  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display='';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display=''; $('pillCloud').style.display='';
   $('pillAR') && ($('pillAR').textContent = arPrep ? '✕ Exit AR' : '⛶ AR');
   arVisible();
 }
@@ -983,6 +1009,110 @@ async function shareView(){
   }catch(e){ if(e&&e.name==='AbortError'){ return; } setViewStatus('Share canceled.','warn'); }
 }
 $('pillShare').addEventListener('click',shareView);
+
+/* =====================================================
+   CLOUD SHARE — Supabase Storage + shares table
+   ===================================================== */
+const SUPA_URL='https://ogmtrdzimqlxhzomnnzl.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbXRyZHppbXFseGh6b21ubnpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MjI4ODgsImV4cCI6MjA5NjI5ODg4OH0.fXdfuU7iELLJC2ZJXrQMBq3YxZd2hRQc7Mi2TjZR7N8';
+const SUPA_BUCKET='splats';
+const supaHeaders={ apikey:SUPA_KEY, Authorization:'Bearer '+SUPA_KEY };
+const uuid=()=> (crypto.randomUUID? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);}));
+
+function shareableArtifact(){
+  if(meshActive && mesh && mesh.sourceBytes){
+    return { bytes:mesh.sourceBytes, ext:'glb', name:(mesh.sourceName||'model.glb').replace(/\.[^.]+$/,'') };
+  }
+  if(viewerActive && layers.length){
+    const l=layers.find(x=>!x.hidden)||layers[0];
+    const data=l.buffer.bufferData;                          // the .ksplat bytes
+    return { bytes:data, ext:'ksplat', name:(l.name||'scene').replace(/\.[^.]+$/,''), extra:(layers.length>1) };
+  }
+  return null;
+}
+
+async function cloudShare(){
+  const art=shareableArtifact();
+  if(!art){ setViewStatus('Load a scene first.','warn'); return; }
+  if(art.extra) setViewStatus('Sharing the first visible layer only.','warn');
+  showLoading('Uploading to cloud', art.name);
+  try{
+    const path=uuid()+'.'+art.ext;
+    const blob=new Blob([art.bytes], {type:'application/octet-stream'});
+    const up=await fetch(`${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${path}`,{
+      method:'POST', headers:{...supaHeaders,'Content-Type':'application/octet-stream','x-upsert':'true'}, body:blob
+    });
+    if(!up.ok){ throw new Error('storage '+up.status+' — '+(await up.text()).slice(0,160)); }
+    const publicUrl=`${SUPA_URL}/storage/v1/object/public/${SUPA_BUCKET}/${path}`;
+
+    // record metadata (gives a short ?share=<id> link); fall back to a direct URL link if the table isn't set up
+    let link;
+    try{
+      const ins=await fetch(`${SUPA_URL}/rest/v1/shares`,{
+        method:'POST', headers:{...supaHeaders,'Content-Type':'application/json',Prefer:'return=representation'},
+        body:JSON.stringify({ name:art.name, path, format:art.ext, url:publicUrl })
+      });
+      if(ins.ok){ const rows=await ins.json(); const id=rows&&rows[0]&&rows[0].id;
+        link=id ? `${location.origin}${location.pathname}?share=${id}` : null; }
+    }catch(e){ /* table optional */ }
+    if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${art.ext}`;
+
+    hideLoading();
+    openShareModal(link);
+    setViewStatus('Share link ready.','ok');
+  }catch(err){
+    hideLoading(); console.error(err);
+    setViewStatus('Cloud share failed: '+(err&&err.message?err.message:'unknown'),'err');
+  }
+}
+$('pillCloud').addEventListener('click',cloudShare);
+
+function openShareModal(link){
+  $('shareLink').value=link;
+  $('shareModal').classList.add('show');
+  setTimeout(()=>{ $('shareLink').focus(); $('shareLink').select(); },50);
+}
+$('shareClose').addEventListener('click',()=>$('shareModal').classList.remove('show'));
+$('shareModal').addEventListener('click',(e)=>{ if(e.target===$('shareModal')) $('shareModal').classList.remove('show'); });
+$('shareCopy').addEventListener('click',async()=>{
+  const v=$('shareLink').value;
+  try{ await navigator.clipboard.writeText(v); $('shareCopy').textContent='Copied'; setTimeout(()=>$('shareCopy').textContent='Copy',1400); }
+  catch(e){ $('shareLink').select(); document.execCommand&&document.execCommand('copy'); $('shareCopy').textContent='Copied'; setTimeout(()=>$('shareCopy').textContent='Copy',1400); }
+});
+$('shareSend').addEventListener('click',async()=>{
+  const url=$('shareLink').value;
+  try{ if(navigator.share){ await navigator.share({title:'Splat Studio scene', url}); } else { await navigator.clipboard.writeText(url); $('shareSend').textContent='Link copied'; setTimeout(()=>$('shareSend').textContent='Share link…',1400); } }
+  catch(e){ /* canceled */ }
+});
+
+async function loadFromUrl(url, fmt, name){
+  const isMesh=/glb|gltf/i.test(fmt||'') || /\.(glb|gltf)(\?|$)/i.test(url);
+  showLoading('Loading shared scene', name||'');
+  try{
+    const res=await fetch(url); if(!res.ok) throw new Error('fetch '+res.status);
+    const buf=await res.arrayBuffer();
+    const stem=(name||'shared').replace(/\.[^.]+$/,'');
+    if(isMesh){ await loadMeshFromArrayBuffer(buf, stem+'.glb'); }
+    else{ await addFiles([new File([buf], stem+'.'+(fmt||'ksplat'), {type:'application/octet-stream'})]); }
+  }catch(e){ hideLoading(); console.error(e); setViewStatus('Couldn\u2019t load shared scene: '+(e&&e.message?e.message:'error'),'err'); }
+}
+
+async function loadFromQuery(){
+  const q=new URLSearchParams(location.search);
+  const share=q.get('share'), u=q.get('u'), f=q.get('f');
+  if(share){
+    showLoading('Opening shared scene','');
+    try{
+      const r=await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(share)}&select=url,format,name`,{headers:supaHeaders});
+      if(!r.ok) throw new Error('lookup '+r.status);
+      const rows=await r.json();
+      if(rows&&rows[0]){ await loadFromUrl(rows[0].url, rows[0].format, rows[0].name); }
+      else { hideLoading(); setViewStatus('Shared scene not found.','err'); }
+    }catch(e){ hideLoading(); setViewStatus('Share lookup failed: '+(e&&e.message?e.message:'error'),'err'); }
+  } else if(u){
+    await loadFromUrl(u, f||'', null);
+  }
+}
 
 // WebXR AR — only offered on devices that actually support immersive-ar (e.g. Android Chrome).
 // iOS/iPadOS Safari has no WebXR, so the pill stays hidden there.
@@ -1360,6 +1490,9 @@ function wireDrop(dropEl,inputEl,onFiles,multi){
     window.addEventListener('orientationchange',()=>setTimeout(()=>window.dispatchEvent(new Event('resize')),300));
   }
 })();
+
+/* ---- open a shared scene if the URL has ?share / ?u ---- */
+loadFromQuery();
 </script>
 </body>
 </html>
