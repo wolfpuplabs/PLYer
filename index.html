@@ -145,8 +145,19 @@
   .log{flex:1;min-height:120px;background:#06080c;border:1px solid var(--border);border-radius:11px;padding:14px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);overflow:auto;white-space:pre-wrap;line-height:1.7}
   .log .t{color:var(--faint)} .log .a{color:var(--accent)} .log .g{color:var(--ok)} .log .w{color:var(--warn)} .log .e{color:var(--err)}
 
-  .loadbadge{position:absolute;top:16px;left:16px;z-index:5;font-family:var(--mono);font-size:11px;color:var(--muted);background:rgba(10,12,16,.7);border:1px solid var(--border);padding:6px 11px;border-radius:7px;backdrop-filter:blur(6px);display:none}
-  .loadbadge.show{display:block}
+  .load-overlay{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(60% 60% at 50% 45%,rgba(20,22,31,.55),rgba(8,9,13,.78));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .load-overlay.show{display:flex;animation:loadFade .25s ease}
+  @keyframes loadFade{from{opacity:0}to{opacity:1}}
+  .load-orb{position:relative;width:74px;height:74px}
+  .load-orb .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(200,121,255,0),var(--accent));-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 5px));mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 5px));animation:spin 1s linear infinite}
+  .load-orb .core{position:absolute;inset:20px;border-radius:50%;background:radial-gradient(circle at 50% 42%,rgba(200,121,255,.9),rgba(200,121,255,0) 72%);animation:pulse 1.6s ease-in-out infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{transform:scale(.78);opacity:.7}50%{transform:scale(1.12);opacity:1}}
+  .load-text{font-family:var(--display);font-size:16px;font-weight:500;color:#e9edf4;letter-spacing:-.01em}
+  .load-sub{font-family:var(--mono);font-size:11.5px;color:var(--faint);min-height:14px}
+  .load-sub .dots::after{content:'';animation:dots 1.4s steps(4,end) infinite}
+  @keyframes dots{0%{content:''}25%{content:'·'}50%{content:'··'}75%{content:'···'}}
+  @media (prefers-reduced-motion:reduce){ .load-orb .ring,.load-orb .core{animation:none} }
 
   ::-webkit-scrollbar{width:10px;height:10px}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}
@@ -195,7 +206,8 @@
           <div class="ico">◈</div>
           <strong>Drop splat or mesh files</strong>
           <span>.ply · .splat · .ksplat · .glb · .gltf</span>
-          <input type="file" id="viewInput" accept=".ply,.splat,.ksplat,.glb,.gltf" multiple hidden />
+          <input type="file" id="viewInput" multiple hidden />
+          <div class="hint" style="margin-top:8px">On iPhone/iPad: if files look greyed out, they're still tappable — just tap one.</div>
         </div>
 
         <div class="group">
@@ -251,7 +263,7 @@
           <strong>Drop a .ply or .splat</strong>
           <span>output: compressed .ksplat</span>
           <div class="file" id="convFileName"></div>
-          <input type="file" id="convInput" accept=".ply,.splat" hidden />
+          <input type="file" id="convInput" hidden />
         </div>
         <div class="group">
           <div class="group-title">Conversion settings</div>
@@ -364,7 +376,11 @@
   </aside>
 
   <main class="stage">
-    <div class="loadbadge" id="loadBadge">loading…</div>
+    <div class="load-overlay" id="loadOverlay">
+      <div class="load-orb"><div class="ring"></div><div class="core"></div></div>
+      <div class="load-text" id="loadText">Loading</div>
+      <div class="load-sub"><span id="loadSub"></span><span class="dots"></span></div>
+    </div>
     <div class="stage-bar" id="stageBar">
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
@@ -444,8 +460,12 @@ let viewer=null, viewerActive=false;
 let mesh=null, meshActive=false;   // three.js GLB/GLTF viewer (separate render path)
 let layers=[];           // {id,file,name,buffer,count,hidden,pos,rot,scale,alpha}
 let nextId=1, shCache=0, didAutoLevel=false;
-const host=$('viewerHost'), badge=$('loadBadge');
+const host=$('viewerHost');
 const sceneActive=()=>viewerActive||meshActive;
+const loadOverlay=$('loadOverlay'), loadText=$('loadText'), loadSub=$('loadSub');
+function showLoading(title, sub){ loadText.textContent=title||'Loading'; loadSub.textContent=sub||''; loadOverlay.classList.add('show'); }
+function setLoading(title, sub){ if(title!=null) loadText.textContent=title; if(sub!=null) loadSub.textContent=sub; }
+function hideLoading(){ loadOverlay.classList.remove('show'); }
 
 function parseVec3(str,fb){const p=str.split(',').map(s=>parseFloat(s.trim()));return (p.length===3&&p.every(n=>!isNaN(n)))?p:fb;}
 
@@ -464,7 +484,7 @@ async function addFiles(fileList){
   if(!files.length){ setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.','err'); return; }
   if(layers.length===0) didAutoLevel=false;   // a fresh scene should auto-level on load
   const sh=parseInt($('viewSH').value,10); shCache=sh;
-  badge.classList.add('show'); badge.textContent='parsing…';
+  showLoading('Parsing splats','reading & packing');
   setViewStatus('Parsing '+files.length+' file(s)…','warn');
   try{
     for(const file of files){
@@ -476,7 +496,7 @@ async function addFiles(fileList){
     await rebuild();
     setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok');
   }catch(err){
-    console.error(err); badge.classList.remove('show');
+    console.error(err); hideLoading();
     setViewStatus('Could not load: '+(err&&err.message?err.message:'unknown'),'err');
   }
 }
@@ -577,7 +597,7 @@ function frameMesh(){
 }
 
 async function loadMeshFromArrayBuffer(buf, name){
-  badge.classList.add('show'); badge.textContent='loading mesh…'; emptyState.style.display='none';
+  showLoading('Loading mesh','GLB / GLTF'); emptyState.style.display='none';
   try{
     const m=await startMeshMode();
     const loader=new m.deps.GLTFLoader();
@@ -587,12 +607,12 @@ async function loadMeshFromArrayBuffer(buf, name){
     if(!obj) throw new Error('no scene in file');
     m.group.add(obj);
     frameMesh();
-    badge.classList.remove('show'); ambient.style.display='none';
+    hideLoading(); ambient.style.display='none';
     stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
     setViewStatus('Mesh loaded · '+(name||'model'),'ok');
     window.dispatchEvent(new Event('resize'));
   }catch(err){
-    console.error(err); badge.classList.remove('show'); disposeMeshViewer(); host.innerHTML='';
+    console.error(err); hideLoading(); disposeMeshViewer(); host.innerHTML='';
     emptyState.style.display='flex';
     setViewStatus('Couldn\u2019t load mesh: '+(err&&err.message?err.message:'unknown'),'err');
   }
@@ -617,13 +637,13 @@ async function rebuild(){
   const prevCam=captureCam();
   const visible=layers.filter(l=>!l.hidden);
   await disposeViewer();
-  if(!visible.length){ emptyState.style.display='flex'; ambient.style.display=''; stageBar.classList.remove('show'); badge.classList.remove('show'); return; }
+  if(!visible.length){ emptyState.style.display='flex'; ambient.style.display=''; stageBar.classList.remove('show'); hideLoading(); return; }
 
   // auto-level the very first build of a fresh scene so the object loads upright
   if(!didAutoLevel){ autoLevel(); didAutoLevel=true; }
 
   const up=parseVec3($('viewUp').value,[0,-1,0]);
-  badge.classList.add('show'); badge.textContent='building…'; emptyState.style.display='none';
+  showLoading('Building scene','arranging splats'); emptyState.style.display='none';
 
   viewer=new GaussianSplats3D.Viewer({
     rootElement:host, sharedMemoryForWorkers:false, useBuiltInControls:true,
@@ -639,7 +659,7 @@ async function rebuild(){
     splatAlphaRemovalThreshold:l.alpha
   }));
 
-  await viewer.addSplatBuffers(buffers, opts, true, true, true, false, false);
+  await viewer.addSplatBuffers(buffers, opts, true, false, false, false, false);
   viewer.start();
   viewerActive=true;
   ambient.style.display='none';
@@ -647,7 +667,7 @@ async function rebuild(){
   window.dispatchEvent(new Event('resize'));
   // …then keep the user's camera across rebuilds, auto-framing only on the first build
   if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
-  badge.classList.remove('show');
+  hideLoading();
   stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
 }
 
@@ -817,10 +837,10 @@ $('viewSH').addEventListener('change',async()=>{
   if(!layers.length){ shCache=parseInt($('viewSH').value,10); return; }
   // SH degree affects parsing → re-parse cached files
   const sh=parseInt($('viewSH').value,10); shCache=sh;
-  badge.classList.add('show'); badge.textContent='re-parsing…'; setViewStatus('Re-parsing for SH '+sh+'…','warn');
+  showLoading('Re-parsing','spherical harmonics'); setViewStatus('Re-parsing for SH '+sh+'…','warn');
   try{ for(const l of layers){ l.buffer=await bufferFromFile(l.file,sh); l.count=l.buffer.getSplatCount(); }
        renderLayerList(); await rebuild(); setViewStatus('Updated to SH '+sh+'.','ok'); }
-  catch(err){ badge.classList.remove('show'); setViewStatus('Re-parse failed: '+err.message,'err'); }
+  catch(err){ hideLoading(); setViewStatus('Re-parse failed: '+err.message,'err'); }
 });
 
 wireDrop($('viewDrop'),$('viewInput'),handleViewFiles,true);
