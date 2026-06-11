@@ -193,9 +193,9 @@
       <div class="mode active" id="mode-view">
         <div class="drop" id="viewDrop">
           <div class="ico">◈</div>
-          <strong>Drop splat files</strong>
-          <span>.ply · .splat · .ksplat — multiple at once</span>
-          <input type="file" id="viewInput" accept=".ply,.splat,.ksplat" multiple hidden />
+          <strong>Drop splat or mesh files</strong>
+          <span>.ply · .splat · .ksplat · .glb · .gltf</span>
+          <input type="file" id="viewInput" accept=".ply,.splat,.ksplat,.glb,.gltf" multiple hidden />
         </div>
 
         <div class="group">
@@ -374,7 +374,7 @@
     <div class="empty" id="emptyState">
       <div class="ring"></div>
       <h2>No scene loaded</h2>
-      <p>Drop one or more splat files to render them. Drag to orbit, scroll to zoom.</p>
+      <p>Drop splat files (.ply/.splat/.ksplat) or a mesh (.glb/.gltf). Drag to orbit, scroll to zoom.</p>
     </div>
 
     <div class="convstage" id="convStage">
@@ -432,8 +432,8 @@ function activateTab(tab){
   $('genStage').classList.toggle('active',generating);
   ambient.style.display = (!overlay && !viewerActive)?'':'none';
   $('viewerHost').style.display = overlay?'none':'';
-  stageBar.classList.toggle('show', !overlay && viewerActive);
-  emptyState.style.display = (overlay||viewerActive)?'none':'flex';
+  stageBar.classList.toggle('show', !overlay && sceneActive());
+  emptyState.style.display = (overlay||sceneActive())?'none':'flex';
 }
 tabs.forEach(t=>t.addEventListener('click',()=>activateTab(t.dataset.tab)));
 
@@ -441,9 +441,11 @@ tabs.forEach(t=>t.addEventListener('click',()=>activateTab(t.dataset.tab)));
    VIEW — multi-scene layers
    ===================================================== */
 let viewer=null, viewerActive=false;
+let mesh=null, meshActive=false;   // three.js GLB/GLTF viewer (separate render path)
 let layers=[];           // {id,file,name,buffer,count,hidden,pos,rot,scale,alpha}
 let nextId=1, shCache=0, didAutoLevel=false;
 const host=$('viewerHost'), badge=$('loadBadge');
+const sceneActive=()=>viewerActive||meshActive;
 
 function parseVec3(str,fb){const p=str.split(',').map(s=>parseFloat(s.trim()));return (p.length===3&&p.every(n=>!isNaN(n)))?p:fb;}
 
@@ -481,21 +483,134 @@ async function addFiles(fileList){
 
 const totalSplats=()=>layers.filter(l=>!l.hidden).reduce((s,l)=>s+l.count,0);
 
+function activeCamCtrl(){
+  if(meshActive && mesh && mesh.camera && mesh.controls) return {camera:mesh.camera, controls:mesh.controls};
+  if(viewerActive && viewer && viewer.camera && viewer.controls) return {camera:viewer.camera, controls:viewer.controls};
+  return null;
+}
 function captureCam(){
-  if(!viewer||!viewer.camera||!viewer.controls) return null;
-  return { pos:viewer.camera.position.toArray(), up:viewer.camera.up.toArray(), target:viewer.controls.target.toArray() };
+  const a=activeCamCtrl(); if(!a) return null;
+  return { pos:a.camera.position.toArray(), up:a.camera.up.toArray(), target:a.controls.target.toArray() };
 }
 function applyCam(c){
-  if(!c||!viewer||!viewer.camera||!viewer.controls) return;
-  viewer.camera.position.fromArray(c.pos);
-  viewer.camera.up.fromArray(c.up);
-  viewer.controls.target.fromArray(c.target);
-  viewer.controls.update();
+  const a=activeCamCtrl(); if(!c||!a) return;
+  a.camera.position.fromArray(c.pos); a.camera.up.fromArray(c.up);
+  a.controls.target.fromArray(c.target); a.controls.update();
 }
 
 async function disposeViewer(){
   if(viewer){ try{await viewer.dispose();}catch(e){} viewer=null; }
   host.innerHTML=''; viewerActive=false;
+}
+function disposeMeshViewer(){
+  if(mesh){
+    try{ cancelAnimationFrame(mesh.raf); }catch(e){}
+    try{ window.removeEventListener('resize', mesh.onResize); }catch(e){}
+    try{ mesh.controls && mesh.controls.dispose(); }catch(e){}
+    try{ mesh.renderer && mesh.renderer.dispose(); }catch(e){}
+    mesh=null;
+  }
+  meshActive=false;
+}
+
+/* ---- three.js GLB/GLTF mesh viewer (lazy-loaded addons) ---- */
+const MESH_CDN='https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/';
+let meshDeps=null;
+async function loadMeshDeps(){
+  if(meshDeps) return meshDeps;
+  const [gltf,orbit,draco,roomenv]=await Promise.all([
+    import(MESH_CDN+'loaders/GLTFLoader.js'),
+    import(MESH_CDN+'controls/OrbitControls.js'),
+    import(MESH_CDN+'loaders/DRACOLoader.js'),
+    import(MESH_CDN+'environments/RoomEnvironment.js')
+  ]);
+  meshDeps={ GLTFLoader:gltf.GLTFLoader, OrbitControls:orbit.OrbitControls, DRACOLoader:draco.DRACOLoader, RoomEnvironment:roomenv.RoomEnvironment };
+  return meshDeps;
+}
+
+async function startMeshMode(){
+  await disposeViewer();           // leave splat mode (clears host)
+  layers=[]; renderLayerList();    // mesh mode replaces the splat scene
+  disposeMeshViewer();
+  host.innerHTML='';
+  const deps=await loadMeshDeps();
+  const w=host.clientWidth||800, h=host.clientHeight||600;
+  const renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(w,h);
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.0;
+  host.appendChild(renderer.domElement);
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(50, w/h, 0.01, 2000);
+  camera.position.set(0,0,3);
+  const controls=new deps.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping=true; controls.dampingFactor=0.08;
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  let env=null; try{ env=pmrem.fromScene(new deps.RoomEnvironment(), 0.04).texture; scene.environment=env; }catch(e){}
+  const key=new THREE.DirectionalLight(0xffffff,2.0); key.position.set(3,5,4); scene.add(key);
+  scene.add(new THREE.AmbientLight(0xffffff,0.45));
+  const group=new THREE.Group(); scene.add(group);
+  const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
+  window.addEventListener('resize',onResize);
+  mesh={renderer,scene,camera,controls,group,env,pmrem,onResize,raf:0,deps};
+  const loop=()=>{ if(!mesh) return; controls.update(); renderer.render(scene,camera); mesh.raf=requestAnimationFrame(loop); };
+  mesh.raf=requestAnimationFrame(loop);
+  meshActive=true;
+  return mesh;
+}
+
+function frameMesh(){
+  if(!mesh||!mesh.group) return;
+  const box=new THREE.Box3().setFromObject(mesh.group);
+  if(box.isEmpty()) return;
+  const c=new THREE.Vector3(); box.getCenter(c);
+  const size=new THREE.Vector3(); box.getSize(size);
+  const radius=Math.max(size.length()/2,1e-4);
+  const cam=mesh.camera;
+  const vfov=cam.fov*Math.PI/180, hfov=2*Math.atan(Math.tan(vfov/2)*(cam.aspect||1));
+  const dist=radius/Math.sin(Math.min(vfov,hfov)/2)*1.25;
+  const dir=new THREE.Vector3(0.6,0.35,1).normalize();
+  cam.up.set(0,1,0);
+  cam.position.copy(c).addScaledVector(dir,dist);
+  cam.near=Math.max(dist/500,0.001); cam.far=dist*500; cam.updateProjectionMatrix();
+  mesh.controls.target.copy(c); mesh.controls.update();
+}
+
+async function loadMeshFromArrayBuffer(buf, name){
+  badge.classList.add('show'); badge.textContent='loading mesh…'; emptyState.style.display='none';
+  try{
+    const m=await startMeshMode();
+    const loader=new m.deps.GLTFLoader();
+    try{ const d=new m.deps.DRACOLoader(); d.setDecoderPath(MESH_CDN+'libs/draco/'); loader.setDRACOLoader(d); }catch(e){}
+    const gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
+    const obj=gltf.scene||(gltf.scenes&&gltf.scenes[0]);
+    if(!obj) throw new Error('no scene in file');
+    m.group.add(obj);
+    frameMesh();
+    badge.classList.remove('show'); ambient.style.display='none';
+    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
+    setViewStatus('Mesh loaded · '+(name||'model'),'ok');
+    window.dispatchEvent(new Event('resize'));
+  }catch(err){
+    console.error(err); badge.classList.remove('show'); disposeMeshViewer(); host.innerHTML='';
+    emptyState.style.display='flex';
+    setViewStatus('Couldn\u2019t load mesh: '+(err&&err.message?err.message:'unknown'),'err');
+  }
+}
+async function loadMeshFile(file){ const buf=await file.arrayBuffer(); await loadMeshFromArrayBuffer(buf, file.name); }
+
+function isMeshName(n){ return /\.(glb|gltf)$/i.test(n||''); }
+async function handleViewFiles(fileList){
+  const files=[...fileList];
+  const meshes=files.filter(f=>isMeshName(f.name));
+  const splats=files.filter(f=>formatFromName(f.name)!==null);
+  if(meshes.length){
+    if(splats.length) setViewStatus('Loaded the mesh; splat files in the same drop were skipped (modes are separate).','warn');
+    await loadMeshFile(meshes[0]);
+    return;
+  }
+  if(splats.length){ if(meshActive){ disposeMeshViewer(); host.innerHTML=''; } await addFiles(splats); return; }
+  setViewStatus('Unsupported file. Use .ply/.splat/.ksplat or .glb/.gltf.','err');
 }
 
 async function rebuild(){
@@ -708,7 +823,7 @@ $('viewSH').addEventListener('change',async()=>{
   catch(err){ badge.classList.remove('show'); setViewStatus('Re-parse failed: '+err.message,'err'); }
 });
 
-wireDrop($('viewDrop'),$('viewInput'),addFiles,true);
+wireDrop($('viewDrop'),$('viewInput'),handleViewFiles,true);
 
 /* =====================================================
    CAMERA BOOKMARKS
@@ -740,14 +855,14 @@ function doSave(){
 }
 $('bmSave').addEventListener('click',doSave);
 $('pillSave').addEventListener('click',doSave);
-$('pillFrame').addEventListener('click',()=>frameScene());
+$('pillFrame').addEventListener('click',()=>{ if(meshActive) frameMesh(); else frameScene(); });
 $('bmName').addEventListener('keydown',e=>{ if(e.key==='Enter') doSave(); });
 
 let flyRAF=null;
 function flyTo(b){
-  if(!viewer||!viewer.camera||!viewer.controls) return;
+  const a=activeCamCtrl(); if(!a) return;
   if(flyRAF) cancelAnimationFrame(flyRAF);
-  const cam=viewer.camera, ctr=viewer.controls;
+  const cam=a.camera, ctr=a.controls;
   const p0=cam.position.clone(), t0=ctr.target.clone();
   const p1=new THREE.Vector3().fromArray(b.pos), t1=new THREE.Vector3().fromArray(b.target);
   cam.up.fromArray(b.up);
