@@ -132,6 +132,14 @@
   .stage-bar.show{display:flex}
   .pill{font-family:var(--mono);font-size:11.5px;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);padding:7px 12px;border-radius:8px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s}
   .pill:hover{border-color:var(--accent-dim)}
+  /* three.js-injected START AR / AR NOT SUPPORTED button, restyled to match */
+  #viewerHost button.xr-start{
+    position:absolute!important; bottom:22px!important; left:50%!important; transform:translateX(-50%)!important;
+    width:auto!important; min-width:150px!important; padding:13px 22px!important;
+    background:var(--accent)!important; color:#1a0a26!important; border:none!important; border-radius:10px!important;
+    font-family:var(--mono)!important; font-size:13px!important; font-weight:600!important; letter-spacing:.04em!important;
+    opacity:1!important; cursor:pointer!important; box-shadow:0 6px 24px rgba(200,121,255,.35)!important; z-index:8!important;
+  }
 
   .convstage{position:absolute;inset:0;display:none;flex-direction:column;padding:34px;gap:20px;overflow:auto;background:radial-gradient(120% 80% at 20% 0%,rgba(200,121,255,.05),transparent 60%),var(--bg)}
   .convstage.active{display:flex}
@@ -382,6 +390,7 @@
       <div class="load-sub"><span id="loadSub"></span><span class="dots"></span></div>
     </div>
     <div class="stage-bar" id="stageBar">
+      <div class="pill" id="pillAR" style="display:none">⛶ AR</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
     </div>
@@ -450,6 +459,7 @@ function activateTab(tab){
   $('viewerHost').style.display = overlay?'none':'';
   stageBar.classList.toggle('show', !overlay && sceneActive());
   emptyState.style.display = (overlay||sceneActive())?'none':'flex';
+  if(typeof arVisible==='function') arVisible();
 }
 tabs.forEach(t=>t.addEventListener('click',()=>activateTab(t.dataset.tab)));
 
@@ -459,7 +469,7 @@ tabs.forEach(t=>t.addEventListener('click',()=>activateTab(t.dataset.tab)));
 let viewer=null, viewerActive=false;
 let mesh=null, meshActive=false;   // three.js GLB/GLTF viewer (separate render path)
 let layers=[];           // {id,file,name,buffer,count,hidden,pos,rot,scale,alpha}
-let nextId=1, shCache=0, didAutoLevel=false;
+let nextId=1, shCache=0, didAutoLevel=false, arPrep=false;
 const host=$('viewerHost');
 const sceneActive=()=>viewerActive||meshActive;
 const loadOverlay=$('loadOverlay'), loadText=$('loadText'), loadSub=$('loadSub');
@@ -609,6 +619,7 @@ async function loadMeshFromArrayBuffer(buf, name){
     frameMesh();
     hideLoading(); ambient.style.display='none';
     stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
+    if(typeof arVisible==='function') arVisible();
     setViewStatus('Mesh loaded · '+(name||'model'),'ok');
     window.dispatchEvent(new Event('resize'));
   }catch(err){
@@ -643,12 +654,15 @@ async function rebuild(){
   if(!didAutoLevel){ autoLevel(); didAutoLevel=true; }
 
   const up=parseVec3($('viewUp').value,[0,-1,0]);
-  showLoading('Building scene','arranging splats'); emptyState.style.display='none';
+  showLoading(arPrep?'Preparing AR':'Building scene', arPrep?'tap START AR':'arranging splats'); emptyState.style.display='none';
 
+  const ARMODE=(GaussianSplats3D.WebXRMode&&GaussianSplats3D.WebXRMode.AR)||2;
   viewer=new GaussianSplats3D.Viewer({
-    rootElement:host, sharedMemoryForWorkers:false, useBuiltInControls:true,
+    rootElement:host, sharedMemoryForWorkers:false, useBuiltInControls:!arPrep,
     cameraUp:up, initialCameraPosition:[-1,-4,6], initialCameraLookAt:[0,1,0],
-    sphericalHarmonicsDegree:shCache
+    sphericalHarmonicsDegree:shCache,
+    webXRMode: arPrep?ARMODE:(GaussianSplats3D.WebXRMode?GaussianSplats3D.WebXRMode.None:0),
+    webXRSessionInit: arPrep?{optionalFeatures:['local-floor','bounded-floor','hand-tracking']}:{}
   });
 
   const buffers=visible.map(l=>l.buffer);
@@ -665,10 +679,21 @@ async function rebuild(){
   ambient.style.display='none';
   // make sure the renderer matches the stage size first (fixes embedded / iPad browsers)…
   window.dispatchEvent(new Event('resize'));
-  // …then keep the user's camera across rebuilds, auto-framing only on the first build
-  if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
-  hideLoading();
+  if(arPrep){
+    // the library injected a "START AR" button into the stage; style + label it, and
+    // restore the normal viewer when the AR session ends
+    const arBtn=host.querySelector('button');
+    if(arBtn){ arBtn.classList.add('xr-start'); }
+    try{ viewer.renderer.xr.addEventListener('sessionend',()=>{ if(arPrep){ arPrep=false; rebuild(); } }); }catch(e){}
+    hideLoading();
+  } else {
+    // keep the user's camera across rebuilds, auto-framing only on the first build
+    if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
+    hideLoading();
+  }
   stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
+  $('pillAR') && ($('pillAR').textContent = arPrep ? '✕ Exit AR' : '⛶ AR');
+  arVisible();
 }
 
 function sampleCenters(budget){
@@ -876,6 +901,26 @@ function doSave(){
 $('bmSave').addEventListener('click',doSave);
 $('pillSave').addEventListener('click',doSave);
 $('pillFrame').addEventListener('click',()=>{ if(meshActive) frameMesh(); else frameScene(); });
+
+// WebXR AR — only offered on devices that actually support immersive-ar (e.g. Android Chrome).
+// iOS/iPadOS Safari has no WebXR, so the pill stays hidden there.
+(async()=>{
+  try{
+    if(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')){
+      $('pillAR').dataset.ok='1';
+    }
+  }catch(e){}
+})();
+function arVisible(){
+  const ok = $('pillAR').dataset.ok==='1' && viewerActive && !meshActive;
+  $('pillAR').style.display = ok ? '' : 'none';
+}
+$('pillAR').addEventListener('click', async ()=>{
+  if(!layers.length){ setViewStatus('Load a splat scene first.','warn'); return; }
+  arPrep=!arPrep;
+  await rebuild();
+  setViewStatus(arPrep ? 'AR ready — tap START AR (bottom of the view).' : 'Back to normal view.', 'ok');
+});
 $('bmName').addEventListener('keydown',e=>{ if(e.key==='Enter') doSave(); });
 
 let flyRAF=null;
