@@ -141,6 +141,20 @@
   .modal input{flex:1;min-width:0;font-family:var(--mono);font-size:12px;color:var(--text);background:#0c0e13;border:1px solid var(--border);border-radius:9px;padding:11px 12px}
   .modal .btn-row{display:flex;gap:8px;flex-wrap:wrap}
   .modal .btn-row .btn{flex:1;white-space:nowrap}
+  .modal .qr-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;margin:4px 0 16px}
+  .modal .qr-wrap img{width:200px;height:200px;border-radius:12px;background:#fff;padding:10px;box-sizing:border-box}
+  /* sidebar collapse */
+  .app.collapsed .sidebar{display:none}
+  .app.collapsed .stage{height:100dvh}
+  .panel-toggle{position:absolute;top:14px;left:14px;z-index:6;font-family:var(--mono);font-size:15px;line-height:1;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);width:34px;height:34px;border-radius:9px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center}
+  .panel-toggle:hover{border-color:var(--accent-dim)}
+  /* model-viewer AR overlay */
+  .mv-overlay{position:fixed;inset:0;z-index:40;display:none;background:#06070b}
+  .mv-overlay.show{display:block}
+  .mv-overlay model-viewer{width:100%;height:100%;background:#06070b;--poster-color:transparent}
+  .mv-overlay .mv-close{position:absolute;top:16px;left:16px;z-index:2;font-family:var(--mono);font-size:13px;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);padding:9px 14px;border-radius:9px;cursor:pointer}
+  .mv-overlay .mv-ar{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);z-index:2;font-family:var(--mono);font-size:13px;font-weight:600;color:#1a0a26;background:var(--accent);border:none;padding:13px 24px;border-radius:11px;cursor:pointer;box-shadow:0 6px 24px rgba(200,121,255,.35)}
+  .mv-overlay .mv-hint{position:absolute;bottom:74px;left:50%;transform:translateX(-50%);z-index:2;font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;width:90%}
   /* three.js-injected START AR / AR NOT SUPPORTED button, restyled to match */
   #viewerHost button.xr-start{
     position:absolute!important; bottom:22px!important; left:50%!important; transform:translateX(-50%)!important;
@@ -410,6 +424,7 @@
   </aside>
 
   <main class="stage">
+    <button class="panel-toggle" id="panelToggle" title="Hide / show panel">‹</button>
     <div class="load-overlay" id="loadOverlay">
       <div class="load-orb"><div class="ring"></div><div class="core"></div></div>
       <div class="load-text" id="loadText">Loading</div>
@@ -432,11 +447,17 @@
           <input type="text" id="shareLink" readonly />
           <button class="btn ghost sm" id="shareCopy" style="width:auto;white-space:nowrap">Copy</button>
         </div>
+        <div class="qr-wrap"><img id="shareQR" alt="QR code" /></div>
         <div class="btn-row">
           <button class="btn" id="shareSend">Share link…</button>
+          <button class="btn ghost" id="shareSaveQR">Save QR</button>
           <button class="btn ghost" id="shareClose">Close</button>
         </div>
       </div>
+    </div>
+    <div class="mv-overlay" id="mvOverlay">
+      <button class="mv-close" id="mvClose">✕ Close</button>
+      <div class="mv-hint" id="mvHint">Tap “View in AR”, then point your camera at the floor.</div>
     </div>
     <div class="empty" id="emptyState">
       <div class="ring"></div>
@@ -1062,7 +1083,10 @@ async function cloudShare(){
     setViewStatus('Share link ready.','ok');
   }catch(err){
     hideLoading(); console.error(err);
-    setViewStatus('Cloud share failed: '+(err&&err.message?err.message:'unknown'),'err');
+    let msg=err&&err.message?err.message:'unknown';
+    if(/bucket not found/i.test(msg)) msg='Storage bucket "splats" not found — create a public bucket named "splats" in Supabase → Storage, then retry.';
+    else if(/row-level security|violates|403|401/i.test(msg)) msg='Permission denied — run the supabase-setup.sql policies in your Supabase SQL editor, then retry.';
+    setViewStatus('Cloud share failed: '+msg,'err');
   }
 }
 $('pillCloud').addEventListener('click',cloudShare);
@@ -1070,6 +1094,7 @@ $('pillCloud').addEventListener('click',cloudShare);
 function openShareModal(link){
   $('shareLink').value=link;
   $('shareModal').classList.add('show');
+  renderQR(link);
   setTimeout(()=>{ $('shareLink').focus(); $('shareLink').select(); },50);
 }
 $('shareClose').addEventListener('click',()=>$('shareModal').classList.remove('show'));
@@ -1124,16 +1149,89 @@ async function loadFromQuery(){
   }catch(e){}
 })();
 function arVisible(){
-  const ok = $('pillAR').dataset.ok==='1' && viewerActive && !meshActive;
+  let ok=false;
+  if(meshActive && mesh && mesh.sourceBytes) ok=true;               // GLB → model-viewer AR (iOS Quick Look / Android)
+  else if(viewerActive && !meshActive) ok = $('pillAR').dataset.ok==='1';  // splat → WebXR (Android only)
   $('pillAR').style.display = ok ? '' : 'none';
+  if(ok && !arPrep) $('pillAR').textContent = '⛶ AR';
 }
 $('pillAR').addEventListener('click', async ()=>{
+  if(meshActive){ openMeshAR(); return; }                          // mesh path: model-viewer
   if(!layers.length){ setViewStatus('Load a splat scene first.','warn'); return; }
   arPrep=!arPrep;
   await rebuild();
   setViewStatus(arPrep ? 'AR ready — tap START AR (bottom of the view).' : 'Back to normal view.', 'ok');
 });
 $('bmName').addEventListener('keydown',e=>{ if(e.key==='Enter') doSave(); });
+
+/* ---- collapse the side panel for a fullscreen preview ---- */
+$('panelToggle').addEventListener('click',()=>{
+  const app=document.querySelector('.app');
+  const collapsed=app.classList.toggle('collapsed');
+  $('panelToggle').textContent = collapsed ? '›' : '‹';
+  $('panelToggle').title = collapsed ? 'Show panel' : 'Hide panel';
+  setTimeout(()=>window.dispatchEvent(new Event('resize')),60);
+});
+
+/* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
+let mvLoaded=null, mvBlobUrl=null;
+function loadModelViewer(){
+  if(mvLoaded) return mvLoaded;
+  mvLoaded=new Promise((res,rej)=>{
+    const s=document.createElement('script'); s.type='module';
+    s.src='https://cdn.jsdelivr.net/npm/@google/model-viewer@4.0.0/dist/model-viewer.min.js';
+    s.onload=()=>res(true); s.onerror=()=>rej(new Error('model-viewer failed to load'));
+    document.head.appendChild(s);
+  });
+  return mvLoaded;
+}
+async function openMeshAR(){
+  if(!(mesh && mesh.sourceBytes)){ setViewStatus('Load a .glb / .gltf mesh first.','warn'); return; }
+  setViewStatus('Preparing AR…','warn');
+  try{ await loadModelViewer(); }catch(e){ setViewStatus('Could not load the AR component (needs internet).','err'); return; }
+  const ov=$('mvOverlay');
+  if(mvBlobUrl){ URL.revokeObjectURL(mvBlobUrl); }
+  mvBlobUrl=URL.createObjectURL(new Blob([mesh.sourceBytes],{type:'model/gltf-binary'}));
+  let mv=ov.querySelector('model-viewer');
+  if(!mv){ mv=document.createElement('model-viewer'); ov.insertBefore(mv, ov.firstChild); }
+  mv.setAttribute('ar',''); mv.setAttribute('ar-modes','webxr scene-viewer quick-look');
+  mv.setAttribute('camera-controls',''); mv.setAttribute('touch-action','pan-y');
+  mv.setAttribute('shadow-intensity','1'); mv.setAttribute('environment-image','neutral'); mv.setAttribute('ar-scale','auto');
+  mv.src=mvBlobUrl;
+  ov.classList.add('show');
+  setViewStatus('Tap the AR button in the viewer to place it in your room.','ok');
+}
+$('mvClose').addEventListener('click',()=>{ $('mvOverlay').classList.remove('show'); });
+
+/* ---- QR code for the share link ---- */
+let qrLib=null;
+function loadQR(){
+  if(qrLib) return qrLib;
+  qrLib=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js';
+    s.onload=()=>res(window.QRCode); s.onerror=()=>rej(new Error('qr lib failed'));
+    document.head.appendChild(s);
+  });
+  return qrLib;
+}
+async function renderQR(link){
+  const img=$('shareQR');
+  try{
+    const QR=await loadQR();
+    const url=await QR.toDataURL(link,{width:512,margin:1,color:{dark:'#0c0e13',light:'#ffffff'}});
+    img.src=url; img.dataset.url=url; img.style.display='';
+  }catch(e){ img.style.display='none'; }
+}
+$('shareSaveQR').addEventListener('click',async()=>{
+  const url=$('shareQR').dataset.url; if(!url){ setViewStatus('QR not ready yet.','warn'); return; }
+  try{
+    const blob=await (await fetch(url)).blob();
+    const file=new File([blob],'splat-studio-qr.png',{type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'Splat Studio QR'}); }
+    else { const a=document.createElement('a'); a.href=url; a.download='splat-studio-qr.png'; a.click(); }
+  }catch(e){ if(e&&e.name==='AbortError') return; const a=document.createElement('a'); a.href=url; a.download='splat-studio-qr.png'; a.click(); }
+});
 
 let flyRAF=null;
 function flyTo(b){
