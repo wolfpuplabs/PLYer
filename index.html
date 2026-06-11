@@ -155,6 +155,9 @@
   .mv-overlay .mv-close{position:absolute;top:16px;left:16px;z-index:2;font-family:var(--mono);font-size:13px;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);padding:9px 14px;border-radius:9px;cursor:pointer}
   .mv-overlay .mv-ar{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);z-index:2;font-family:var(--mono);font-size:13px;font-weight:600;color:#1a0a26;background:var(--accent);border:none;padding:13px 24px;border-radius:11px;cursor:pointer;box-shadow:0 6px 24px rgba(200,121,255,.35)}
   .mv-overlay .mv-hint{position:absolute;bottom:74px;left:50%;transform:translateX(-50%);z-index:2;font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;width:90%}
+  .acct{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 22px;border-top:1px solid var(--border-soft)}
+  .acct-state{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .modal .auth-fields{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
   /* three.js-injected START AR / AR NOT SUPPORTED button, restyled to match */
   #viewerHost button.xr-start{
     position:absolute!important; bottom:22px!important; left:50%!important; transform:translateX(-50%)!important;
@@ -417,8 +420,12 @@
       </div>
     </div>
 
+    <div class="acct" id="acctRow">
+      <span class="acct-state" id="acctState">Not signed in</span>
+      <button class="btn ghost sm" id="acctBtn" style="width:auto">Sign in</button>
+    </div>
     <div class="footnote">
-      Runs entirely in your browser — nothing is uploaded.<br>
+      Local-first: viewing &amp; converting happen in your browser. Files are only uploaded when you tap <b>☁ Link</b> to share.<br>
       Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a>, or TRELLIS via a <a href="https://huggingface.co/spaces/trellis-community/TRELLIS" target="_blank" rel="noopener">Hugging Face Space</a> (experimental).
     </div>
   </aside>
@@ -457,6 +464,21 @@
     <div class="mv-overlay" id="mvOverlay">
       <button class="mv-close" id="mvClose">✕ Close</button>
       <div class="mv-hint" id="mvHint">Tap “View in AR”, then point your camera at the floor.</div>
+    </div>
+    <div class="modal-back" id="authModal">
+      <div class="modal">
+        <h3 id="authTitle">Sign in</h3>
+        <p id="authMsg">Sign in to keep your shared scenes permanently (no 24-hour auto-delete).</p>
+        <div class="auth-fields">
+          <input type="email" id="authEmail" placeholder="email" autocomplete="email" />
+          <input type="password" id="authPass" placeholder="password" autocomplete="current-password" />
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="authGo">Sign in</button>
+          <button class="btn ghost" id="authToggle">Create account</button>
+          <button class="btn ghost" id="authClose">Close</button>
+        </div>
+      </div>
     </div>
     <div class="empty" id="emptyState">
       <div class="ring"></div>
@@ -2960,8 +2982,8 @@ async function startMeshMode(){
   const group=new THREE.Group(); scene.add(group);
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
-  mesh={renderer,scene,camera,controls,group,env,pmrem,onResize,raf:0,deps};
-  const loop=()=>{ if(!mesh) return; controls.update(); renderer.render(scene,camera); mesh.raf=requestAnimationFrame(loop); };
+  mesh={renderer,scene,camera,controls,group,env,pmrem,onResize,raf:0,deps,mixer:null,clock:new THREE.Clock()};
+  const loop=()=>{ if(!mesh) return; const dt=mesh.clock.getDelta(); if(mesh.mixer) mesh.mixer.update(dt); controls.update(); renderer.render(scene,camera); mesh.raf=requestAnimationFrame(loop); };
   mesh.raf=requestAnimationFrame(loop);
   meshActive=true;
   return mesh;
@@ -2996,11 +3018,17 @@ async function loadMeshFromArrayBuffer(buf, name){
     const obj=gltf.scene||(gltf.scenes&&gltf.scenes[0]);
     if(!obj) throw new Error('no scene in file');
     m.group.add(obj);
+    // autoplay any embedded animation clips
+    if(gltf.animations && gltf.animations.length){
+      m.mixer=new THREE.AnimationMixer(obj);
+      gltf.animations.forEach(clip=>m.mixer.clipAction(clip).play());
+      m.clipCount=gltf.animations.length;
+    }
     frameMesh();
     hideLoading(); ambient.style.display='none';
     stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display=''; $('pillCloud').style.display='';
     if(typeof arVisible==='function') arVisible();
-    setViewStatus('Mesh loaded · '+(name||'model'),'ok');
+    setViewStatus('Mesh loaded · '+(name||'model')+(m.clipCount?(' · '+m.clipCount+' animation'+(m.clipCount>1?'s':'')+' playing'):''),'ok');
     window.dispatchEvent(new Event('resize'));
   }catch(err){
     console.error(err); hideLoading(); disposeMeshViewer(); host.innerHTML='';
@@ -3338,6 +3366,76 @@ const SUPA_URL='https://ogmtrdzimqlxhzomnnzl.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9nbXRyZHppbXFseGh6b21ubnpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MjI4ODgsImV4cCI6MjA5NjI5ODg4OH0.fXdfuU7iELLJC2ZJXrQMBq3YxZd2hRQc7Mi2TjZR7N8';
 const SUPA_BUCKET='splats';
 const supaHeaders={ apikey:SUPA_KEY, Authorization:'Bearer '+SUPA_KEY };
+
+/* ===== Auth (Supabase GoTrue, email + password) ===== */
+let session=null, authMode='signin';
+function loadSession(){ try{ const r=localStorage.getItem('splatstudio.session'); if(r) session=JSON.parse(r); }catch(e){} }
+function saveSession(s){ session=s; try{ s?localStorage.setItem('splatstudio.session',JSON.stringify(s)):localStorage.removeItem('splatstudio.session'); }catch(e){} refreshAcctUI(); }
+function loggedIn(){ return !!(session && session.access_token); }
+function authHeaders(){ return loggedIn() ? {apikey:SUPA_KEY, Authorization:'Bearer '+session.access_token} : supaHeaders; }
+function refreshAcctUI(){
+  if(loggedIn()){ $('acctState').textContent=session.email||'Signed in'; $('acctBtn').textContent='Logout'; }
+  else { $('acctState').textContent='Not signed in'; $('acctBtn').textContent='Sign in'; }
+}
+function applyAuthData(d){
+  if(!d || !d.access_token) return false;
+  saveSession({ access_token:d.access_token, refresh_token:d.refresh_token,
+    expires_at:d.expires_at||(Math.floor(Date.now()/1000)+(d.expires_in||3600)),
+    email:(d.user&&d.user.email)||(session&&session.email) });
+  return true;
+}
+async function ensureFreshToken(){
+  if(!loggedIn()) return;
+  const now=Math.floor(Date.now()/1000);
+  if(session.expires_at && session.expires_at-now<60 && session.refresh_token){
+    try{
+      const r=await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:SUPA_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})});
+      if(r.ok) applyAuthData(await r.json()); else saveSession(null);
+    }catch(e){}
+  }
+}
+function syncAuthMode(){
+  const su=authMode==='signup';
+  $('authTitle').textContent=su?'Create account':'Sign in';
+  $('authGo').textContent=su?'Create account':'Sign in';
+  $('authToggle').textContent=su?'Have an account? Sign in':'Create account';
+}
+async function doAuth(){
+  const email=$('authEmail').value.trim(), pass=$('authPass').value;
+  if(!email||!pass){ $('authMsg').textContent='Enter email and password.'; return; }
+  $('authGo').disabled=true;
+  try{
+    if(authMode==='signup'){
+      const r=await fetch(`${SUPA_URL}/auth/v1/signup`,{method:'POST',headers:{apikey:SUPA_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+      const d=await r.json();
+      if(!r.ok) throw new Error(d.msg||d.error_description||d.error||('signup '+r.status));
+      if(d.access_token){ applyAuthData(d); $('authModal').classList.remove('show'); setViewStatus('Account created — signed in.','ok'); }
+      else { $('authMsg').textContent='Account created. Check your email to confirm, then sign in.'; authMode='signin'; syncAuthMode(); }
+    } else {
+      const r=await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`,{method:'POST',headers:{apikey:SUPA_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password:pass})});
+      const d=await r.json();
+      if(!r.ok||!d.access_token) throw new Error(d.msg||d.error_description||d.error||'Invalid email or password');
+      applyAuthData(d); $('authModal').classList.remove('show'); setViewStatus('Signed in.','ok');
+    }
+  }catch(e){ $('authMsg').textContent='Auth failed: '+(e&&e.message?e.message:'error'); }
+  finally{ $('authGo').disabled=false; }
+}
+async function doLogout(){
+  try{ await fetch(`${SUPA_URL}/auth/v1/logout`,{method:'POST',headers:authHeaders()}); }catch(e){}
+  saveSession(null); setViewStatus('Signed out.','ok');
+}
+$('acctBtn').addEventListener('click',()=>{
+  if(loggedIn()){ doLogout(); return; }
+  authMode='signin'; syncAuthMode();
+  $('authMsg').textContent='Sign in to keep shared scenes permanently (no 24-hour auto-delete).';
+  $('authModal').classList.add('show'); setTimeout(()=>$('authEmail').focus(),50);
+});
+$('authToggle').addEventListener('click',()=>{ authMode=authMode==='signup'?'signin':'signup'; syncAuthMode(); });
+$('authGo').addEventListener('click',doAuth);
+$('authClose').addEventListener('click',()=>$('authModal').classList.remove('show'));
+$('authModal').addEventListener('click',e=>{ if(e.target===$('authModal')) $('authModal').classList.remove('show'); });
+$('authPass').addEventListener('keydown',e=>{ if(e.key==='Enter') doAuth(); });
+loadSession(); refreshAcctUI();
 const uuid=()=> (crypto.randomUUID? crypto.randomUUID() : 'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);}));
 
 function shareableArtifact(){
@@ -3356,22 +3454,26 @@ async function cloudShare(){
   const art=shareableArtifact();
   if(!art){ setViewStatus('Load a scene first.','warn'); return; }
   if(art.extra) setViewStatus('Sharing the first visible layer only.','warn');
+  await ensureFreshToken();
+  const H=authHeaders();
   showLoading('Uploading to cloud', art.name);
   try{
     const path=uuid()+'.'+art.ext;
     const blob=new Blob([art.bytes], {type:'application/octet-stream'});
     const up=await fetch(`${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${path}`,{
-      method:'POST', headers:{...supaHeaders,'Content-Type':'application/octet-stream','x-upsert':'true'}, body:blob
+      method:'POST', headers:{...H,'Content-Type':'application/octet-stream','x-upsert':'true'}, body:blob
     });
     if(!up.ok){ throw new Error('storage '+up.status+' — '+(await up.text()).slice(0,160)); }
     const publicUrl=`${SUPA_URL}/storage/v1/object/public/${SUPA_BUCKET}/${path}`;
 
     // record metadata (gives a short ?share=<id> link); fall back to a direct URL link if the table isn't set up
     let link;
+    const row={ name:art.name, path, format:art.ext, url:publicUrl };
+    if(loggedIn()) row.expires_at=null;            // keep permanently for signed-in users
     try{
       const ins=await fetch(`${SUPA_URL}/rest/v1/shares`,{
-        method:'POST', headers:{...supaHeaders,'Content-Type':'application/json',Prefer:'return=representation'},
-        body:JSON.stringify({ name:art.name, path, format:art.ext, url:publicUrl })
+        method:'POST', headers:{...H,'Content-Type':'application/json',Prefer:'return=representation'},
+        body:JSON.stringify(row)
       });
       if(ins.ok){ const rows=await ins.json(); const id=rows&&rows[0]&&rows[0].id;
         link=id ? `${location.origin}${location.pathname}?share=${id}` : null; }
@@ -3393,6 +3495,10 @@ $('pillCloud').addEventListener('click',cloudShare);
 
 function openShareModal(link){
   $('shareLink').value=link;
+  const note=$('shareModal').querySelector('p');
+  if(note) note.textContent = loggedIn()
+    ? 'Saved to your account — this link stays live until you delete it.'
+    : 'Heads up: anonymous uploads auto-delete after 24 hours. Sign in to keep them.';
   $('shareModal').classList.add('show');
   renderQR(link);
   setTimeout(()=>{ $('shareLink').focus(); $('shareLink').select(); },50);
@@ -3510,6 +3616,7 @@ async function openMeshAR(){
   mv.setAttribute('ar',''); mv.setAttribute('ar-modes','webxr scene-viewer quick-look');
   mv.setAttribute('camera-controls',''); mv.setAttribute('touch-action','pan-y');
   mv.setAttribute('shadow-intensity','1'); mv.setAttribute('environment-image','neutral'); mv.setAttribute('ar-scale','auto');
+  mv.setAttribute('autoplay','');   // play glTF animations in the in-browser view (and Android AR)
   mv.src=mvBlobUrl;
   ov.classList.add('show');
   setViewStatus('Tap the AR button in the viewer to place it in your room.','ok');
