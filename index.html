@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Splat Studio — PLY viewer & KSPLAT converter</title>
+<title>Plyer — splat viewer by PlayXR</title>
 
 <!-- three + GaussianSplats3D (MIT, © Mark Kellogg) loaded from CDN -->
 <script type="importmap">
@@ -221,9 +221,9 @@
   <aside class="sidebar">
     <div class="brand">
       <button class="drawer-close" id="drawerClose" title="Hide panel">✕</button>
-      <div class="eyebrow">Gaussian&nbsp;Splatting&nbsp;·&nbsp;Toolkit</div>
-      <h1>Splat&nbsp;Studio<span class="dot">.</span></h1>
-      <p>View, compose &amp; convert .ply / .splat / .ksplat</p>
+      <div class="eyebrow">PlayXR&nbsp;·&nbsp;Gaussian&nbsp;Splat&nbsp;Viewer</div>
+      <h1>Plyer<span class="dot">.</span></h1>
+      <p>View, compose, convert &amp; share .ply / .splat / .ksplat</p>
     </div>
 
     <div class="tabs">
@@ -425,7 +425,7 @@
       <button class="btn ghost sm" id="acctBtn" style="width:auto">Sign in</button>
     </div>
     <div class="footnote">
-      Local-first: viewing &amp; converting happen in your browser. Files are only uploaded when you tap <b>☁ Link</b> to share.<br>
+      <b>Plyer</b> by PlayXR — local-first: viewing &amp; converting happen in your browser. Files are only uploaded when you tap <b>☁ Link</b> to share.<br>
       Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a>, or TRELLIS via a <a href="https://huggingface.co/spaces/trellis-community/TRELLIS" target="_blank" rel="noopener">Hugging Face Space</a> (experimental).
     </div>
   </aside>
@@ -450,7 +450,7 @@
       <div class="modal">
         <h3>Share this scene</h3>
         <img id="shareThumb" class="thumb" alt="preview" style="display:none" />
-        <p>Anyone with the link opens it live in Splat Studio (loaded from your Supabase project).</p>
+        <p>Anyone with the link opens it live in Plyer (loaded from your Supabase project).</p>
         <div class="link-row">
           <input type="text" id="shareLink" readonly />
           <button class="btn ghost sm" id="shareCopy" style="width:auto;white-space:nowrap">Copy</button>
@@ -458,7 +458,7 @@
         <div class="qr-wrap"><img id="shareQR" alt="QR code" /></div>
         <div class="btn-row">
           <button class="btn" id="shareSend">Share</button>
-          <button class="btn ghost" id="shareSaveQR">Save QR</button>
+          <button class="btn ghost" id="shareSaveQR">Save card</button>
           <button class="btn ghost" id="shareClose">Close</button>
         </div>
       </div>
@@ -484,8 +484,8 @@
     </div>
     <div class="empty" id="emptyState">
       <div class="ring"></div>
-      <h2>No scene loaded</h2>
-      <p>Drop splat files (.ply/.splat/.ksplat) or a mesh (.glb/.gltf). Drag to orbit, scroll to zoom.</p>
+      <h2>Drop a splat to begin</h2>
+      <p>Open a .ply / .splat / .ksplat or a .glb / .gltf mesh. Drag to orbit, pinch / scroll to zoom — then share it as a live 3D link.</p>
       <button class="btn" id="emptyLoad" style="width:auto;margin-top:16px">Load a file</button>
     </div>
 
@@ -2882,8 +2882,12 @@ async function addFiles(fileList, opts){
   opts=opts||{};
   const files=[...fileList].filter(f=>formatFromName(f.name)!==null);
   if(!files.length){ setViewStatus('Unsupported file type. Use .ply, .splat or .ksplat.','err'); return; }
-  if(opts.forceUp){ $('viewUp').value=opts.forceUp; syncUpChips(); }
-  if(layers.length===0) didAutoLevel = opts.forceUp ? true : false;   // generators are Y-up; captures auto-level
+  if(layers.length===0){
+    didAutoLevel = true;                       // don't auto-level on load — default to a clean orientation
+    if(opts.forceUp){ $('viewUp').value=opts.forceUp; }
+    else { $('viewUp').value='0, 1, 0'; }      // Y-up default
+    syncUpChips();
+  }
   const sh=parseInt($('viewSH').value,10); shCache=sh;
   const compress=parseInt($('loadMode').value,10);
   const save=$('chipSaveKsplat').classList.contains('active');
@@ -3363,9 +3367,9 @@ async function shareView(){
   if(!url || url.length<2000){ setViewStatus('Snapshot came back empty — try again.','warn'); return; }
   try{
     const blob=await (await fetch(url)).blob();
-    const file=new File([blob],'splat-studio.png',{type:'image/png'});
+    const file=new File([blob],'plyer-snapshot.png',{type:'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:'Splat Studio', text:'Rendered with Splat Studio'});
+      await navigator.share({files:[file], title:'Plyer', text:'Rendered with Plyer by PlayXR'});
       setViewStatus('Shared snapshot.','ok');
     } else {
       const a=document.createElement('a'); a.href=url; a.download='splat-studio.png'; a.click();
@@ -3476,6 +3480,7 @@ async function cloudShare(){
   if(!art){ setViewStatus('Load a scene first.','warn'); return; }
   if(art.extra) setViewStatus('Sharing the first visible layer only.','warn');
   const thumb=captureThumb(640);
+  shareSceneName=art.name||'Shared scene'; _cardCache=null;
   await ensureFreshToken();
   const H=authHeaders();
   let bytes=art.bytes, ext=art.ext, path=uuid()+'.'+ext;
@@ -3501,7 +3506,9 @@ async function cloudShare(){
 
     // record metadata (gives a short ?share=<id> link); fall back to a direct URL link if the table isn't set up
     let link;
-    const row={ name:art.name, path, format:ext, url:publicUrl };
+    const xfLayer = art.layer ? {pos:art.layer.pos, rot:art.layer.rot, scale:art.layer.scale, alpha:art.layer.alpha} : null;
+    const meta = { up: $('viewUp').value, xf: xfLayer };
+    const row={ name:art.name, path, format:ext, url:publicUrl, meta };
     if(loggedIn()) row.expires_at=null;            // keep permanently for signed-in users
     try{
       const ins=await fetch(`${SUPA_URL}/rest/v1/shares`,{
@@ -3511,7 +3518,7 @@ async function cloudShare(){
       if(ins.ok){ const rows=await ins.json(); const id=rows&&rows[0]&&rows[0].id;
         link=id ? `${location.origin}${location.pathname}?share=${id}` : null; }
     }catch(e){ /* table optional */ }
-    if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${ext}`;
+    if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${ext}&up=${encodeURIComponent($('viewUp').value)}`;
 
     hideLoading();
     openShareModal(link, thumb);
@@ -3527,7 +3534,7 @@ async function cloudShare(){
 }
 $('pillCloud').addEventListener('click',cloudShare);
 
-let shareThumbUrl=null;
+let shareThumbUrl=null, shareSceneName='';
 function openShareModal(link, thumb){
   $('shareLink').value=link;
   shareThumbUrl = thumb || null;
@@ -3551,30 +3558,32 @@ $('shareCopy').addEventListener('click',async()=>{
 $('shareSend').addEventListener('click',async()=>{
   const link=$('shareLink').value;
   try{
-    if(shareThumbUrl && navigator.canShare){
-      const blob=await (await fetch(shareThumbUrl)).blob();
-      const file=new File([blob],'splat-studio-preview.jpg',{type:'image/jpeg'});
+    const card = _cardCache || await composeCard();
+    if(card && navigator.canShare){
+      const blob=await (await fetch(card)).blob();
+      const file=new File([blob],'plyer-card.png',{type:'image/png'});
       if(navigator.canShare({files:[file]})){
-        await navigator.share({files:[file], text:link, url:link, title:'Splat Studio scene'});  // chat shows preview + link
+        await navigator.share({files:[file], text:link, url:link, title:'Plyer scene'});  // card preview + link
         return;
       }
     }
-    if(navigator.share){ await navigator.share({title:'Splat Studio scene', text:link, url:link}); return; }
+    if(navigator.share){ await navigator.share({title:'Plyer scene', text:link, url:link}); return; }
     await navigator.clipboard.writeText(link);
     $('shareSend').textContent='Link copied'; setTimeout(()=>$('shareSend').textContent='Share',1400);
   }catch(e){ if(e&&e.name==='AbortError') return; }
 });
 $('shareSaveQR').addEventListener('click',async()=>{
-  const url=$('shareQR') && $('shareQR').dataset.url; if(!url){ setViewStatus('QR not ready yet.','warn'); return; }
   try{
-    const blob=await (await fetch(url)).blob();
-    const file=new File([blob],'splat-studio-qr.png',{type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'Splat Studio QR'}); }
-    else { const a=document.createElement('a'); a.href=url; a.download='splat-studio-qr.png'; a.click(); }
-  }catch(e){ if(e&&e.name==='AbortError') return; const a=document.createElement('a'); a.href=url; a.download='splat-studio-qr.png'; a.click(); }
+    const card = _cardCache || await composeCard();
+    if(!card){ setViewStatus('Card not ready yet.','warn'); return; }
+    const blob=await (await fetch(card)).blob();
+    const file=new File([blob],'plyer-card.png',{type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'Plyer card'}); }
+    else { const a=document.createElement('a'); a.href=card; a.download='plyer-card.png'; a.click(); }
+  }catch(e){ if(e&&e.name==='AbortError') return; const a=document.createElement('a'); a.href=_cardCache||''; a.download='plyer-card.png'; if(a.href) a.click(); }
 });
 
-async function loadFromUrl(url, fmt, name){
+async function loadFromUrl(url, fmt, name, meta){
   const isMesh=/glb|gltf/i.test(fmt||'') || /\.(glb|gltf)(\?|$)/i.test(url);
   showLoading('Loading shared scene', name||'');
   try{
@@ -3582,7 +3591,17 @@ async function loadFromUrl(url, fmt, name){
     const buf=await res.arrayBuffer();
     const stem=(name||'shared').replace(/\.[^.]+$/,'');
     if(isMesh){ await loadMeshFromArrayBuffer(buf, stem+'.glb'); }
-    else{ await addFiles([new File([buf], stem+'.'+(fmt||'ksplat'), {type:'application/octet-stream'})]); }
+    else{
+      const up = meta && meta.up ? meta.up : '0, 1, 0';
+      await addFiles([new File([buf], stem+'.'+(fmt||'ksplat'), {type:'application/octet-stream'})], {forceUp:up});
+      // reproduce the sharer's per-layer transform so the view matches
+      if(meta && meta.xf && layers.length){
+        const l=layers[layers.length-1], xf=meta.xf;
+        if(xf.pos) l.pos=xf.pos; if(xf.rot) l.rot=xf.rot;
+        if(xf.scale!=null) l.scale=xf.scale; if(xf.alpha!=null) l.alpha=xf.alpha;
+        renderLayerList(); await rebuild();
+      }
+    }
   }catch(e){ hideLoading(); console.error(e); setViewStatus('Couldn\u2019t load shared scene: '+(e&&e.message?e.message:'error'),'err'); }
 }
 
@@ -3592,14 +3611,14 @@ async function loadFromQuery(){
   if(share){
     showLoading('Opening shared scene','');
     try{
-      const r=await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(share)}&select=url,format,name`,{headers:supaHeaders});
+      const r=await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(share)}&select=url,format,name,meta`,{headers:supaHeaders});
       if(!r.ok) throw new Error('lookup '+r.status);
       const rows=await r.json();
-      if(rows&&rows[0]){ await loadFromUrl(rows[0].url, rows[0].format, rows[0].name); }
+      if(rows&&rows[0]){ await loadFromUrl(rows[0].url, rows[0].format, rows[0].name, rows[0].meta); }
       else { hideLoading(); setViewStatus('Shared scene not found.','err'); }
     }catch(e){ hideLoading(); setViewStatus('Share lookup failed: '+(e&&e.message?e.message:'error'),'err'); }
   } else if(u){
-    await loadFromUrl(u, f||'', null);
+    await loadFromUrl(u, f||'', null, q.get('up')?{up:q.get('up')}:null);
   }
 }
 
@@ -3684,6 +3703,32 @@ async function renderQR(link){
     const url=c.toDataURL('image/png');
     img.src=url; img.dataset.url=url; img.style.display='';
   }catch(e){ console.warn('qr',e); img.style.display='none'; }
+}
+function _loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+function _rr(x,a,b,w,h,r){ x.beginPath(); x.moveTo(a+r,b); x.arcTo(a+w,b,a+w,b+h,r); x.arcTo(a+w,b+h,a,b+h,r); x.arcTo(a,b+h,a,b,r); x.arcTo(a,b,a+w,b,r); x.closePath(); }
+function _cover(x,img,dx,dy,dw,dh){ const s=Math.max(dw/img.width,dh/img.height), w=img.width*s, h=img.height*s; x.drawImage(img, dx+(dw-w)/2, dy+(dh-h)/2, w, h); }
+let _cardCache=null;
+async function composeCard(){
+  const thumb=shareThumbUrl, qr=$('shareQR')&&$('shareQR').dataset.url, name=shareSceneName||'Shared scene';
+  const W=1080,H=1440, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+  const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#150f1f'); g.addColorStop(1,'#0a0b10'); x.fillStyle=g; x.fillRect(0,0,W,H);
+  const rg=x.createRadialGradient(W*0.78,140,0,W*0.78,140,560); rg.addColorStop(0,'rgba(200,121,255,.22)'); rg.addColorStop(1,'rgba(200,121,255,0)'); x.fillStyle=rg; x.fillRect(0,0,W,H);
+  x.textBaseline='top';
+  x.fillStyle='#f1ebf7'; x.font='600 66px "Space Grotesk",system-ui,sans-serif'; x.fillText('Plyer', 72, 70);
+  const tw0=x.measureText('Plyer').width; x.fillStyle='#c879ff'; x.fillText('.', 72+tw0, 70);
+  x.fillStyle='#9aa0ad'; x.font='500 27px "JetBrains Mono",monospace'; x.fillText('splat viewer by PlayXR', 74, 158);
+  const tx=72, ty=224, tW=W-144, tH=Math.round(tW*0.62);
+  if(thumb){ try{ const im=await _loadImg(thumb); _rr(x,tx,ty,tW,tH,30); x.save(); x.clip(); _cover(x,im,tx,ty,tW,tH); x.restore(); }catch(e){} }
+  else { _rr(x,tx,ty,tW,tH,30); x.fillStyle='#10131b'; x.fill(); }
+  x.strokeStyle='rgba(255,255,255,.08)'; x.lineWidth=2; _rr(x,tx,ty,tW,tH,30); x.stroke();
+  x.fillStyle='#e9edf4'; x.font='600 44px "Space Grotesk",system-ui,sans-serif';
+  let nm=name; while(x.measureText(nm).width>tW-20 && nm.length>4){ nm=nm.slice(0,-2); } if(nm!==name) nm+='…';
+  x.fillText(nm, 72, ty+tH+44);
+  const qs=300, qx=72, qy=H-qs-110;
+  if(qr){ try{ const q=await _loadImg(qr); x.fillStyle='#fff'; _rr(x,qx-18,qy-18,qs+36,qs+36,22); x.fill(); x.drawImage(q,qx,qy,qs,qs); }catch(e){} }
+  x.fillStyle='#d7dbe4'; x.font='600 34px "Space Grotesk",system-ui,sans-serif'; x.fillText('Scan to open', qx+qs+54, qy+96);
+  x.fillStyle='#8a8f9c'; x.font='500 26px "JetBrains Mono",monospace'; x.fillText('in 3D  ·  AR', qx+qs+54, qy+146);
+  _cardCache=c.toDataURL('image/png'); return _cardCache;
 }
 let flyRAF=null;
 function flyTo(b){
