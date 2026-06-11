@@ -272,6 +272,7 @@
   <main class="stage">
     <div class="loadbadge" id="loadBadge">loading…</div>
     <div class="stage-bar" id="stageBar">
+      <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
     </div>
     <canvas id="ambient"></canvas>
@@ -319,7 +320,7 @@ tabs.forEach(t=>t.addEventListener('click',()=>{
   $('mode-'+tab).classList.add('active');
   const converting = tab==='convert';
   convStage.classList.toggle('active',converting);
-  ambient.style.display = converting?'none':'';
+  ambient.style.display = (!converting && !viewerActive)?'':'none';
   $('viewerHost').style.display = converting?'none':'';
   stageBar.classList.toggle('show', !converting && viewerActive);
   emptyState.style.display = (converting||viewerActive)?'none':'flex';
@@ -389,7 +390,7 @@ async function rebuild(){
   const prevCam=captureCam();
   const visible=layers.filter(l=>!l.hidden);
   await disposeViewer();
-  if(!visible.length){ emptyState.style.display='flex'; stageBar.classList.remove('show'); badge.classList.remove('show'); return; }
+  if(!visible.length){ emptyState.style.display='flex'; ambient.style.display=''; stageBar.classList.remove('show'); badge.classList.remove('show'); return; }
 
   const up=parseVec3($('viewUp').value,[0,-1,-0.6]);
   badge.classList.add('show'); badge.textContent='building…'; emptyState.style.display='none';
@@ -411,9 +412,32 @@ async function rebuild(){
   await viewer.addSplatBuffers(buffers, opts, true, true, true, false, false);
   viewer.start();
   viewerActive=true;
-  if(prevCam) applyCam(prevCam);
+  ambient.style.display='none';
+  // keep the user's camera across rebuilds; auto-frame only on the first build
+  if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
+  // make sure the renderer matches the stage size (fixes embedded / iPad browsers)
+  requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));
   badge.classList.remove('show');
-  stageBar.classList.add('show'); $('bmSave').disabled=false;
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display='';
+}
+
+function frameScene(){
+  if(!viewer||!viewer.getSplatMesh||!viewer.camera||!viewer.controls) return;
+  try{
+    const box=viewer.getSplatMesh().computeBoundingBox(true);
+    const center=new THREE.Vector3(); box.getCenter(center);
+    const size=new THREE.Vector3();  box.getSize(size);
+    const radius=Math.max(size.length()/2,1e-4);
+    const cam=viewer.camera;
+    const vfov=cam.fov*Math.PI/180;
+    const hfov=2*Math.atan(Math.tan(vfov/2)*(cam.aspect||1));
+    const dist=radius/Math.sin(Math.min(vfov,hfov)/2)*1.25;
+    const dir=new THREE.Vector3(-1,-5,6).normalize();   // same pleasant 3/4 angle as the default
+    cam.position.copy(center).addScaledVector(dir,dist);
+    cam.near=Math.max(dist/200,0.005); cam.far=dist*200; cam.updateProjectionMatrix();
+    viewer.controls.target.copy(center);
+    viewer.controls.update();
+  }catch(e){ console.warn('frameScene failed',e); }
 }
 
 function eulerToQuat(deg){
@@ -518,6 +542,7 @@ function doSave(){
 }
 $('bmSave').addEventListener('click',doSave);
 $('pillSave').addEventListener('click',doSave);
+$('pillFrame').addEventListener('click',()=>frameScene());
 $('bmName').addEventListener('keydown',e=>{ if(e.key==='Enter') doSave(); });
 
 let flyRAF=null;
@@ -605,7 +630,17 @@ function wireDrop(dropEl,inputEl,onFiles,multi){
       g.addColorStop(0,b.col+Math.round(b.a*255).toString(16).padStart(2,'0')); g.addColorStop(1,b.col+'00');
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
     raf=requestAnimationFrame(frame); }
-  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){ init();frame(); window.addEventListener('resize',()=>{cancelAnimationFrame(raf);init();frame();}); }
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    init(); frame();
+    const stageEl=ambient.parentElement;
+    let t=null;
+    const ro=new ResizeObserver(()=>{
+      cancelAnimationFrame(raf); init(); frame();
+      clearTimeout(t); t=setTimeout(()=>window.dispatchEvent(new Event('resize')),120);
+    });
+    ro.observe(stageEl);
+    window.addEventListener('orientationchange',()=>setTimeout(()=>window.dispatchEvent(new Event('resize')),300));
+  }
 })();
 </script>
 </body>
