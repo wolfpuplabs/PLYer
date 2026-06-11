@@ -297,6 +297,17 @@
         <img id="genPreview" alt="" style="display:none;width:100%;border-radius:10px;border:1px solid var(--border)" />
 
         <div class="group">
+          <div class="group-title">Engine</div>
+          <div class="field">
+            <select id="genEngine">
+              <option value="fal" selected>fal.ai · TripoSplat (paid, fast, reliable)</option>
+              <option value="trellis">TRELLIS · HF Space (free, ZeroGPU queue, experimental)</option>
+            </select>
+            <div class="hint" id="engineHint">TripoSplat returns a Gaussian .ply via your fal account.</div>
+          </div>
+        </div>
+
+        <div class="group" data-engine="fal">
           <div class="group-title">fal.ai access</div>
           <div class="field">
             <label class="lbl" for="proxyUrl">Proxy URL <span style="color:var(--faint)">· recommended for public sites</span></label>
@@ -310,9 +321,23 @@
           </div>
         </div>
 
-        <div class="group">
-          <div class="group-title">Generation (TripoSplat)</div>
+        <div class="group" data-engine="trellis" style="display:none">
+          <div class="group-title">Hugging Face</div>
           <div class="field">
+            <label class="lbl" for="hfToken">HF token <span style="color:var(--faint)">· recommended</span></label>
+            <input type="password" id="hfToken" placeholder="hf_…" autocomplete="off" />
+            <div class="hint">ZeroGPU Spaces need a token for API access &amp; your GPU quota. Make a read token at huggingface.co/settings/tokens. Saved only on this device.</div>
+          </div>
+          <div class="field">
+            <label class="lbl" for="hfSpace">Space</label>
+            <input type="text" id="hfSpace" value="trellis-community/TRELLIS" autocomplete="off" />
+            <div class="hint">Experimental: free but queued, slow (~1–3 min), and may fail if the Space is busy or its API changed.</div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-title">Generation</div>
+          <div class="field" data-engine="fal">
             <label class="lbl" for="genGaussians">Detail (Gaussians)</label>
             <select id="genGaussians">
               <option value="131072">131k — fast</option>
@@ -321,20 +346,20 @@
             </select>
           </div>
           <div class="field">
-            <div class="field-row"><label class="lbl" for="genSteps">Inference steps</label><span class="val" id="genStepsVal">20</span></div>
+            <div class="field-row"><label class="lbl" for="genSteps">Sampling steps</label><span class="val" id="genStepsVal">20</span></div>
             <input type="range" id="genSteps" min="10" max="40" value="20" />
             <div class="hint">More steps = better fidelity, longer runtime.</div>
           </div>
         </div>
 
         <button class="btn" id="genRun" disabled>Generate 3D from image</button>
-        <div class="status" id="genStatus">Drop a photo and add your key.</div>
+        <div class="status" id="genStatus">Drop a photo to begin.</div>
       </div>
     </div>
 
     <div class="footnote">
       Runs entirely in your browser — nothing is uploaded.<br>
-      Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a> (your key, your credits).
+      Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a>, or TRELLIS via a <a href="https://huggingface.co/spaces/trellis-community/TRELLIS" target="_blank" rel="noopener">Hugging Face Space</a> (experimental).
     </div>
   </aside>
 
@@ -786,17 +811,40 @@ $('convRun').addEventListener('click',async()=>{
    ===================================================== */
 const FAL_KEY_STORE='splatstudio.falkey';
 const PROXY_STORE='splatstudio.proxyurl';
+const HFTOK_STORE='splatstudio.hftoken';
+const HFSPACE_STORE='splatstudio.hfspace';
+const ENGINE_STORE='splatstudio.engine';
 let genImageFile=null, genBusy=false;
 const genLogEl=$('genLog');
 function glog(msg,cls){const s=document.createElement('span');s.className=cls||'t';s.textContent=(genLogEl.textContent?'\n':'')+'› '+msg;genLogEl.appendChild(s);genLogEl.scrollTop=genLogEl.scrollHeight;}
 function setGenStatus(msg,kind){const el=$('genStatus');el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
-function genReady(){ $('genRun').disabled = !(genImageFile && ($('proxyUrl').value.trim()||$('falKey').value.trim()) && !genBusy); }
+function genReady(){
+  const eng=$('genEngine').value;
+  const have = eng==='fal' ? ($('proxyUrl').value.trim()||$('falKey').value.trim()) : true;
+  $('genRun').disabled = !(genImageFile && have && !genBusy);
+}
+function applyEngine(){
+  const eng=$('genEngine').value;
+  document.querySelectorAll('#mode-generate [data-engine]').forEach(el=>{ el.style.display=(el.dataset.engine===eng)?'':'none'; });
+  $('engineHint').textContent = eng==='fal'
+    ? 'TripoSplat returns a Gaussian .ply via your fal account.'
+    : 'TRELLIS runs free on a shared GPU (queued, slow). An HF token is recommended.';
+  try{localStorage.setItem(ENGINE_STORE,eng);}catch(e){}
+  genReady();
+}
 
 try{ const k=localStorage.getItem(FAL_KEY_STORE); if(k) $('falKey').value=k; }catch(e){}
 try{ const p=localStorage.getItem(PROXY_STORE); if(p) $('proxyUrl').value=p; }catch(e){}
+try{ const t=localStorage.getItem(HFTOK_STORE); if(t) $('hfToken').value=t; }catch(e){}
+try{ const s=localStorage.getItem(HFSPACE_STORE); if(s) $('hfSpace').value=s; }catch(e){}
+try{ const e=localStorage.getItem(ENGINE_STORE); if(e) $('genEngine').value=e; }catch(e){}
 $('falKey').addEventListener('input',()=>{ try{localStorage.setItem(FAL_KEY_STORE,$('falKey').value.trim());}catch(e){} genReady(); });
 $('proxyUrl').addEventListener('input',()=>{ try{localStorage.setItem(PROXY_STORE,$('proxyUrl').value.trim());}catch(e){} genReady(); });
+$('hfToken').addEventListener('input',()=>{ try{localStorage.setItem(HFTOK_STORE,$('hfToken').value.trim());}catch(e){} });
+$('hfSpace').addEventListener('input',()=>{ try{localStorage.setItem(HFSPACE_STORE,$('hfSpace').value.trim());}catch(e){} });
+$('genEngine').addEventListener('change',applyEngine);
 $('genSteps').addEventListener('input',e=>$('genStepsVal').textContent=e.target.value);
+applyEngine();
 
 wireDrop($('genDrop'),$('genInput'),(files)=>{
   const f=files[0];
@@ -828,7 +876,84 @@ function imageToDataURL(file, max=1024){
 
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
+function findPlyUrl(data){
+  const out=[], seen=[];
+  const rec=(v)=>{
+    if(v==null) return;
+    if(typeof v==='string'){ if(/^https?:\/\/.+\.(ply|splat)(\?|$)/i.test(v)) out.push(v); return; }
+    if(typeof v==='object'){ if(seen.indexOf(v)>=0) return; seen.push(v);
+      if(typeof v.url==='string' && /\.(ply|splat)(\?|$)/i.test(v.url)) out.push(v.url);
+      for(const k in v){ try{ rec(v[k]); }catch(e){} } }
+  };
+  rec(data); return out[0]||null;
+}
+
+async function generateTrellis(){
+  if(!genImageFile) return;
+  const token=$('hfToken').value.trim();
+  const space=($('hfSpace').value.trim()||'trellis-community/TRELLIS');
+  genBusy=true; genReady(); $('genRun').textContent='Generating…'; setGenStatus('Connecting to HF Space…','warn');
+  let app=null;
+  try{
+    glog('loading gradio client…');
+    const mod=await import('https://esm.sh/@gradio/client');
+    const Client=mod.Client||(mod.default&&mod.default.Client);
+    if(!Client) throw new Error('gradio client unavailable');
+    glog('connecting · '+space+(token?' (token)':' (anonymous)')+'…');
+    app=await Client.connect(space, token?{hf_token:token}:{});
+    try{ await app.predict('/start_session',[]); }catch(e){}
+
+    glog('preprocessing image…');
+    let image=genImageFile;
+    try{ const pre=await app.predict('/preprocess_image',[image]); if(pre&&pre.data&&pre.data[0]) image=pre.data[0]; }
+    catch(e){ glog('preprocess skipped ('+e.message+')','w'); }
+
+    const steps=parseInt($('genSteps').value,10);
+    const seed=Math.floor(Math.random()*2147483647);
+    glog('generating 3D on ZeroGPU · queued, ~1–3 min…','a');
+    const gen=await app.predict('/image_to_3d',[image, seed, 7.5, steps, 3.0, steps]);
+    const state = gen&&gen.data ? (gen.data.length>1?gen.data[1]:gen.data[gen.data.length-1]) : undefined;
+    if(state===undefined) throw new Error('no state returned from image_to_3d');
+
+    glog('extracting Gaussian .ply…');
+    const ex=await app.predict('/extract_gaussian',[state]);
+    const fileUrl=findPlyUrl(ex&&ex.data);
+    if(!fileUrl) throw new Error('no .ply found in output (Space may have changed its API)');
+    glog('result ready','g');
+
+    glog('downloading splat…');
+    let buf;
+    try{ const r=await fetch(fileUrl); if(!r.ok) throw new Error('download '+r.status); buf=await r.arrayBuffer(); }
+    catch(dlErr){
+      glog('couldn\u2019t fetch directly ('+dlErr.message+'). Open this and drop it into the View tab:','w');
+      glog(fileUrl,'a');
+      setGenStatus('Generated — download link in the log.','warn');
+      return;
+    }
+    const base=(genImageFile.name.replace(/\.[^.]+$/,'')||'trellis');
+    const outName=base+'.ply';
+    glog('loading into viewer · '+fmtBytes(buf.byteLength),'g');
+    await addFiles([new File([buf], outName, {type:'application/octet-stream'})]);
+    activateTab('view');
+    setGenStatus('Done — added “'+outName+'” to the scene.','ok');
+  }catch(err){
+    console.error(err);
+    const m=err&&err.message?err.message:String(err);
+    glog('error: '+m,'e');
+    let s='TRELLIS failed — see log.';
+    if(/quota|gpu|zero|exceeded/i.test(m)) s='ZeroGPU busy/quota — add an HF token or retry later.';
+    else if(/token|unauthor|401|403|login|gated/i.test(m)) s='HF token required or rejected.';
+    else if(/Failed to fetch|NetworkError|CORS|load/i.test(m)) s='Network/CORS — the Space may be sleeping; open it once in a tab, then retry.';
+    else if(/api|endpoint|fn_index|not found/i.test(m)) s='Space API changed — use it manually and drop the .ply into View.';
+    setGenStatus(s,'err');
+  }finally{
+    try{ if(app) await app.predict('/end_session',[]); }catch(e){}
+    genBusy=false; $('genRun').textContent='Generate 3D from image'; genReady();
+  }
+}
+
 $('genRun').addEventListener('click',async()=>{
+  if($('genEngine').value==='trellis'){ generateTrellis(); return; }
   const proxy=$('proxyUrl').value.trim().replace(/\/+$/,'');
   const key=$('falKey').value.trim();
   if(!genImageFile||(!proxy&&!key)) return;
