@@ -207,9 +207,9 @@
 
   @media (max-width:1023px){
     html,body{overflow:auto;height:auto}
-    .app{display:block;height:auto;min-height:100dvh;overflow:visible}
-    .stage{position:relative;inset:auto;height:64dvh;min-height:380px;width:100%}
-    .sidebar{position:relative;top:auto;left:auto;bottom:auto;width:100%;height:auto;z-index:auto;transform:none!important;transition:none;box-shadow:none;border-right:none;border-top:1px solid var(--border);background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none;overflow:visible}
+    .app{display:flex;flex-direction:column;height:auto;min-height:100dvh;overflow:visible}
+    .stage{order:-1;position:relative;inset:auto;height:64dvh;min-height:380px;width:100%}
+    .sidebar{order:1;position:relative;top:auto;left:auto;bottom:auto;width:100%;height:auto;z-index:auto;transform:none!important;transition:none;box-shadow:none;border-right:none;border-top:1px solid var(--border);background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none;overflow:visible}
     .app.collapsed .sidebar{display:flex}     /* on mobile, controls always live below — reach by scrolling */
     .panel-toggle{display:none!important}
     .drawer-close{display:none}
