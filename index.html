@@ -86,6 +86,8 @@
   .chip{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--panel-2);border:1px solid var(--border);border-radius:7px;padding:5px 9px;cursor:pointer;transition:.15s}
   .chip:hover{color:var(--text);border-color:var(--accent-dim)}
   .chip.active{color:#1a0a26;background:var(--accent);border-color:var(--accent)}
+  .chip.accent{color:var(--accent);border-color:var(--accent-dim);background:rgba(200,121,255,.08)}
+  .chip.accent:hover{color:#1a0a26;background:var(--accent)}
 
   .status{font-family:var(--mono);font-size:11.5px;min-height:16px;color:var(--muted);word-break:break-word}
   .status.ok{color:var(--ok)} .status.err{color:var(--err)} .status.warn{color:var(--warn)}
@@ -213,6 +215,12 @@
     .pill{font-size:11px;padding:6px 10px}
     .xyz input{min-width:0}
   }
+  @media (min-width:1024px){
+    .app{display:flex}
+    .sidebar{position:relative;top:auto;left:auto;bottom:auto;z-index:auto;transform:none;transition:none;box-shadow:none;flex:0 0 auto;background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .app.collapsed .sidebar{display:none;transform:none}
+    .stage{position:relative;inset:auto;flex:1;height:100%}
+  }
   @media (prefers-reduced-motion:reduce){ #ambient{display:none} }
 </style>
 </head>
@@ -281,6 +289,7 @@
             <label class="lbl" for="viewUp">Camera up vector</label>
             <input type="text" id="viewUp" value="0, 1, 0" />
             <div class="presets" id="upPresets">
+              <button class="chip accent" id="chipFlip">⇅ Flip upside-down</button>
               <button class="chip" id="chipAuto">⤡ Auto-level</button>
               <button class="chip" data-up="0,1,0">Y-up</button>
               <button class="chip" data-up="0,-1,0">Y-down</button>
@@ -288,7 +297,7 @@
               <button class="chip" data-up="0,0,-1">Z-down</button>
               <button class="chip" data-up="0,-1,-0.6">Tilt</button>
             </div>
-            <div class="hint">Loads auto-leveled. If it looks off, pick an axis or hit Auto-level again.</div>
+            <div class="hint">Loads Y-up. If the model is upside-down, tap <b>Flip</b>. Auto-level snaps to the nearest clean axis.</div>
           </div>
         </div>
 
@@ -3154,22 +3163,25 @@ function autoLevel(){
   for(let i=0;i<pts.length;i+=3){const dx=pts[i]-c[0],dy=pts[i+1]-c[1],dz=pts[i+2]-c[2];xx+=dx*dx;yy+=dy*dy;zz+=dz*dz;xy+=dx*dy;xz+=dx*dz;yz+=dy*dz;}
   const vecs=jacobiEigen([[xx/n,xy/n,xz/n],[xy/n,yy/n,yz/n],[xz/n,yz/n,zz/n]]);
   const hint=new THREE.Vector3().fromArray(parseVec3($('viewUp').value,[0,1,0])).normalize();
-  // pick the principal axis nearest the current up hint (direction-agnostic)
+  // pick the principal axis nearest the up hint, then SNAP to the nearest world axis (X/Y/Z) — never tilts
   let ax=null,bestDot=-1;
   for(const v of vecs){ const d=Math.abs(v[0]*hint.x+v[1]*hint.y+v[2]*hint.z); if(d>bestDot){bestDot=d; ax=v.slice();} }
-  if(!ax || bestDot<0.5) return false;   // no axis clearly near vertical → leave as-is
-  // choose the SIGN by the distribution's skew along that axis: ground/floor scenes are
-  // dense at the bottom with a sparse tail upward, so the tail points "up".
+  if(!ax) return false;
+  const a=[Math.abs(ax[0]),Math.abs(ax[1]),Math.abs(ax[2])];
+  const k = a[0]>=a[1]&&a[0]>=a[2] ? 0 : (a[1]>=a[2] ? 1 : 2);
+  const axis=[0,0,0]; axis[k]=1;
+  // choose SIGN by the distribution's skew along that world axis: the sparse end (a figure's
+  // head, or open air above a floor) points "up", the dense end (base/ground) points down.
   let mean=0; const t=new Float64Array(n);
-  for(let i=0,j=0;i<pts.length;i+=3,j++){ const tt=(pts[i]-c[0])*ax[0]+(pts[i+1]-c[1])*ax[1]+(pts[i+2]-c[2])*ax[2]; t[j]=tt; mean+=tt; }
+  for(let i=0,j=0;i<pts.length;i+=3,j++){ const tt=(pts[i]-c[0])*axis[0]+(pts[i+1]-c[1])*axis[1]+(pts[i+2]-c[2])*axis[2]; t[j]=tt; mean+=tt; }
   mean/=n;
   let m2=0,m3=0; for(let j=0;j<n;j++){ const d=t[j]-mean; m2+=d*d; m3+=d*d*d; }
   const std=Math.sqrt(m2/n)||1e-6, skew=(m3/n)/(std*std*std);
   let sign;
-  if(Math.abs(skew)>0.15) sign = skew>0 ? 1 : -1;                       // skewed → tail is up
-  else sign = (ax[0]*hint.x+ax[1]*hint.y+ax[2]*hint.z)>=0 ? 1 : -1;     // symmetric → follow hint
-  const best=ax.map(x=>x*sign);
-  $('viewUp').value=best.map(x=>+x.toFixed(3)).join(', ');
+  if(Math.abs(skew)>0.08) sign = skew>0 ? 1 : -1;
+  else sign = (axis[0]*hint.x+axis[1]*hint.y+axis[2]*hint.z)>=0 ? 1 : -1;   // symmetric → follow hint
+  const best=axis.map(x=>x*sign);
+  $('viewUp').value=best.map(x=>+x).join(', ');
   syncUpChips();
   return true;
 }
@@ -3289,6 +3301,14 @@ $('chipAuto').addEventListener('click',async()=>{
   const ok=autoLevel();
   await rebuild(); frameScene();
   setViewStatus(ok?'Auto-leveled to the object\u2019s vertical axis.':'Couldn\u2019t detect a clear vertical — try a preset.', ok?'ok':'warn');
+});
+$('chipFlip').addEventListener('click',async()=>{
+  if(meshActive){ setViewStatus('Flip is for splat scenes — drag to rotate a mesh.','warn'); return; }
+  if(!layers.length){ setViewStatus('Load a scene first.','warn'); return; }
+  const v=parseVec3($('viewUp').value,[0,1,0]).map(n=>-n);
+  $('viewUp').value=v.map(x=>+(+x).toFixed(3)).join(', '); syncUpChips();
+  await rebuild(); frameScene();
+  setViewStatus('Flipped upside-down.','ok');
 });
 syncUpChips();
 // load-pipeline controls
@@ -3655,7 +3675,7 @@ function setDrawer(collapsed){
 $('panelToggle').addEventListener('click',()=>setDrawer(false));
 $('drawerClose').addEventListener('click',()=>setDrawer(true));
 // start with the preview as the main view on phones/tablets
-if(window.matchMedia('(max-width:900px)').matches) setDrawer(true);
+if(window.matchMedia('(max-width:1023px)').matches) setDrawer(true);
 $('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{ $('viewInput').click(); });
 
 /* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
