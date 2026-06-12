@@ -60,6 +60,19 @@
   .drop strong{display:block;font-size:13px;font-weight:600}
   .drop span{display:block;color:var(--faint);font-size:11px;margin-top:4px;font-family:var(--mono)}
   .drop .file{margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--accent);word-break:break-all}
+  /* compact collapsible "add file" dropdown (stage is the main uploader) */
+  .loader{border:1px solid var(--border);border-radius:12px;background:var(--panel-2);overflow:hidden}
+  .loader-sum{list-style:none;cursor:pointer;padding:13px 14px;font-family:var(--mono);font-size:13px;color:var(--text);display:flex;align-items:center;gap:9px;user-select:none;transition:.15s}
+  .loader-sum::-webkit-details-marker{display:none}
+  .loader-sum .ico{font-size:15px;opacity:.75}
+  .loader-sum::after{content:'▾';margin-left:auto;opacity:.55;transition:transform .2s}
+  .loader[open] .loader-sum::after{transform:rotate(180deg)}
+  .loader-sum:hover{background:var(--raised)}
+  .loader-body{padding:16px 14px;display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;cursor:pointer;border-top:1px dashed var(--border);transition:.15s}
+  .loader-body:hover{background:rgba(200,121,255,.04)}
+  .loader-body.over{background:rgba(200,121,255,.08);border-top-color:var(--accent)}
+  .loader-body span{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .loader-body .fmt{font-size:11px;color:var(--faint)}
 
   .group{display:flex;flex-direction:column;gap:13px}
   .group-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);padding-bottom:6px;border-bottom:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center}
@@ -136,6 +149,14 @@
 
   .stage-bar{position:absolute;top:14px;right:14px;z-index:6;display:none;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:70vw}
   .stage-bar.show{display:flex}
+  /* glowing AR button, docked bottom-center — shows only when an AR-capable asset is loaded */
+  .ar-dock{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);z-index:8;display:none;align-items:center;gap:8px;font-family:var(--mono);font-size:13.5px;font-weight:600;color:#1a0a26;background:var(--accent);border:none;padding:13px 26px;border-radius:13px;cursor:pointer;-webkit-tap-highlight-color:transparent;animation:arGlow 2.1s ease-in-out infinite}
+  .ar-dock:active{transform:translateX(-50%) scale(.96)}
+  @keyframes arGlow{
+    0%,100%{box-shadow:0 8px 24px rgba(200,121,255,.34), 0 0 0 0 rgba(200,121,255,.40)}
+    50%{box-shadow:0 8px 34px rgba(200,121,255,.62), 0 0 26px 7px rgba(200,121,255,.34)}
+  }
+  @media (prefers-reduced-motion:reduce){ .ar-dock{animation:none;box-shadow:0 8px 26px rgba(200,121,255,.45)} }
   .pill{font-family:var(--mono);font-size:11.5px;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);padding:7px 12px;border-radius:8px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s}
   .pill:hover{border-color:var(--accent-dim)}
   .modal-back{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(6,7,11,.66);backdrop-filter:blur(6px)}
@@ -252,13 +273,14 @@
 
       <!-- ===== VIEW ===== -->
       <div class="mode active" id="mode-view">
-        <div class="drop" id="viewDrop">
-          <div class="ico">◈</div>
-          <strong>Drop splat or mesh files</strong>
-          <span>.ply · .splat · .ksplat · .glb · .gltf</span>
-          <input type="file" id="viewInput" multiple hidden />
-          <div class="hint" style="margin-top:8px">On iPhone/iPad: if files look greyed out, they're still tappable — just tap one.</div>
-        </div>
+        <details class="loader" id="viewLoader">
+          <summary class="loader-sum"><span class="ico">◈</span> Add splat / mesh</summary>
+          <div class="loader-body" id="viewDrop">
+            <span>Tap to choose · or drop files here</span>
+            <span class="fmt">.ply · .splat · .ksplat · .glb · .gltf</span>
+            <input type="file" id="viewInput" multiple hidden />
+          </div>
+        </details>
 
         <div class="group">
           <div class="group-title"><span>Scene layers</span><span class="count" id="layerCount"></span></div>
@@ -456,11 +478,11 @@
       <div class="load-sub"><span id="loadSub"></span><span class="dots"></span></div>
     </div>
     <div class="stage-bar" id="stageBar">
-      <div class="pill" id="pillAR" style="display:none">⛶ AR</div>
       <div class="pill" id="pillCloud" style="display:none">☁ Link</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
     </div>
+    <button class="ar-dock" id="pillAR" style="display:none">⛶ View in AR</button>
     <canvas id="ambient"></canvas>
     <div id="viewerHost"></div>
     <div class="modal-back" id="shareModal">
@@ -3664,8 +3686,8 @@ function arVisible(){
   let ok=false;
   if(meshActive && mesh && mesh.sourceBytes) ok=true;               // GLB → model-viewer AR (iOS Quick Look / Android)
   else if(viewerActive && !meshActive) ok = $('pillAR').dataset.ok==='1';  // splat → WebXR (Android only)
-  $('pillAR').style.display = ok ? '' : 'none';
-  if(ok && !arPrep) $('pillAR').textContent = '⛶ AR';
+  $('pillAR').style.display = ok ? 'flex' : 'none';
+  if(ok && !arPrep) $('pillAR').textContent = '⛶ View in AR';
 }
 $('pillAR').addEventListener('click', async ()=>{
   if(meshActive){ openMeshAR(); return; }                          // mesh path: model-viewer
