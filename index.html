@@ -74,8 +74,14 @@
   .loader-body span{font-family:var(--mono);font-size:12px;color:var(--muted)}
   .loader-body .fmt{font-size:11px;color:var(--faint)}
 
-  .group{display:flex;flex-direction:column;gap:13px}
-  .group-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);padding-bottom:6px;border-bottom:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center}
+  .group{display:flex;flex-direction:column;gap:0}
+  .group-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);padding-bottom:6px;border-bottom:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;user-select:none;transition:color .15s}
+  .group-title:hover{color:var(--muted)}
+  .group-title .chev{margin-left:auto;opacity:.55;font-size:11px;transition:transform .22s}
+  .group.collapsed .group-title .chev{transform:rotate(-90deg)}
+  .group-content{display:grid;grid-template-rows:1fr;transition:grid-template-rows .26s ease}
+  .group.collapsed .group-content{grid-template-rows:0fr}
+  .group-inner{overflow:hidden;min-height:0;display:flex;flex-direction:column;gap:13px;padding-top:13px}
   .group-title .count{color:var(--accent);letter-spacing:.05em}
   .field{display:flex;flex-direction:column;gap:6px}
   .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -4123,6 +4129,25 @@ function wireDrop(dropEl,inputEl,onFiles,multi){
   ['dragleave','dragend','drop'].forEach(ev=>dropEl.addEventListener(ev,e=>{e.preventDefault();dropEl.classList.remove('over');}));
   dropEl.addEventListener('drop',e=>{ const fs=e.dataTransfer.files; if(fs&&fs.length) onFiles(multi?fs:[fs[0]]); });
 }
+
+/* ---- collapsible sections (tap a section title to fold/unfold) ---- */
+(function makeCollapsible(){
+  document.querySelectorAll('.sidebar .group').forEach(g=>{
+    const title=g.querySelector(':scope > .group-title');
+    if(!title || g.dataset.coll) return;
+    g.dataset.coll='1';
+    const inner=document.createElement('div'); inner.className='group-inner';
+    let n=title.nextElementSibling;
+    while(n){ const next=n.nextElementSibling; inner.appendChild(n); n=next; }
+    const content=document.createElement('div'); content.className='group-content';
+    content.appendChild(inner);
+    g.appendChild(content);
+    const chev=document.createElement('span'); chev.className='chev'; chev.textContent='▾';
+    title.appendChild(chev);
+    g.classList.add('collapsed');           // default: every section starts folded
+    title.addEventListener('click',()=> g.classList.toggle('collapsed'));
+  });
+})();
 
 /* ---- ambient field ---- */
 (function ambientField(){
