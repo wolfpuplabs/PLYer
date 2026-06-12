@@ -289,7 +289,7 @@
           </div>
           <div class="field">
             <label class="lbl" for="viewUp">Camera up vector</label>
-            <input type="text" id="viewUp" value="0, 1, 0" />
+            <input type="text" id="viewUp" value="0, -1, 0" />
             <div class="presets" id="upPresets">
               <button class="chip accent" id="chipFlip">⇅ Flip upside-down</button>
               <button class="chip" id="chipAuto">⤡ Auto-level</button>
@@ -299,7 +299,7 @@
               <button class="chip" data-up="0,0,-1">Z-down</button>
               <button class="chip" data-up="0,-1,-0.6">Tilt</button>
             </div>
-            <div class="hint">Loads Y-up. If the model is upside-down, tap <b>Flip</b>. Auto-level snaps to the nearest clean axis.</div>
+            <div class="hint">Loads Y-down by default. If the model is upside-down, tap <b>Flip</b>. Auto-level snaps to the nearest clean axis.</div>
           </div>
         </div>
 
@@ -2897,7 +2897,7 @@ async function addFiles(fileList, opts){
   if(layers.length===0){
     didAutoLevel = true;                       // don't auto-level on load — default to a clean orientation
     if(opts.forceUp){ $('viewUp').value=opts.forceUp; }
-    else { $('viewUp').value='0, 1, 0'; }      // Y-up default
+    else { $('viewUp').value='0, -1, 0'; }      // Y-down default
     syncUpChips();
   }
   const sh=parseInt($('viewSH').value,10); shCache=sh;
@@ -3615,7 +3615,7 @@ async function loadFromUrl(url, fmt, name, meta){
     const stem=(name||'shared').replace(/\.[^.]+$/,'');
     if(isMesh){ await loadMeshFromArrayBuffer(buf, stem+'.glb'); }
     else{
-      const up = meta && meta.up ? meta.up : '0, 1, 0';
+      const up = meta && meta.up ? meta.up : '0, -1, 0';
       await addFiles([new File([buf], stem+'.'+(fmt||'ksplat'), {type:'application/octet-stream'})], {forceUp:up});
       // reproduce the sharer's per-layer transform so the view matches
       if(meta && meta.xf && layers.length){
@@ -3679,7 +3679,11 @@ $('panelToggle').addEventListener('click',()=>setDrawer(false));
 $('drawerClose').addEventListener('click',()=>setDrawer(true));
 // start with the preview as the main view on phones/tablets
 if(window.matchMedia('(max-width:1023px)').matches) setDrawer(true);
-$('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{ setDrawer(false); $('viewInput').click(); });
+$('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{
+  const collapsed=document.querySelector('.app').classList.contains('collapsed');
+  setDrawer(!collapsed);            // toggle show / hide the control panel
+  $('viewInput').click();
+});
 
 /* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
 let mvLoaded=null, mvBlobUrl=null;
