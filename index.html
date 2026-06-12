@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Plyer — splat viewer by PlayXR</title>
+<title>Ply.er — splat viewer by PlayXR</title>
 
 <!-- three + GaussianSplats3D (MIT, © Mark Kellogg) loaded from CDN -->
 <script type="importmap">
@@ -87,6 +87,8 @@
   .chip:hover{color:var(--text);border-color:var(--accent-dim)}
   .chip.active{color:#1a0a26;background:var(--accent);border-color:var(--accent)}
   .chip.accent{color:var(--accent);border-color:var(--accent-dim);background:rgba(200,121,255,.08)}
+  .stage-mark{position:absolute;left:16px;bottom:13px;z-index:5;font-family:var(--display);font-weight:600;font-size:19px;letter-spacing:-.01em;color:rgba(240,235,247,.45);pointer-events:none;user-select:none}
+  .stage-mark .dot{color:var(--accent)}
   .chip.accent:hover{color:#1a0a26;background:var(--accent)}
 
   .status{font-family:var(--mono);font-size:11.5px;min-height:16px;color:var(--muted);word-break:break-word}
@@ -230,7 +232,7 @@
     <div class="brand">
       <button class="drawer-close" id="drawerClose" title="Hide panel">✕</button>
       <div class="eyebrow">PlayXR&nbsp;·&nbsp;Gaussian&nbsp;Splat&nbsp;Viewer</div>
-      <h1>Plyer<span class="dot">.</span></h1>
+      <h1>Ply<span class="dot">.</span>er</h1>
       <p>View, compose, convert &amp; share .ply / .splat / .ksplat</p>
     </div>
 
@@ -434,13 +436,14 @@
       <button class="btn ghost sm" id="acctBtn" style="width:auto">Sign in</button>
     </div>
     <div class="footnote">
-      <b>Plyer</b> by PlayXR — local-first: viewing &amp; converting happen in your browser. Files are only uploaded when you tap <b>☁ Link</b> to share.<br>
+      <b>Ply.er</b> by PlayXR — local-first: viewing &amp; converting happen in your browser. Files are only uploaded when you tap <b>☁ Link</b> to share.<br>
       Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a>, or TRELLIS via a <a href="https://huggingface.co/spaces/trellis-community/TRELLIS" target="_blank" rel="noopener">Hugging Face Space</a> (experimental).
     </div>
   </aside>
 
   <main class="stage">
     <button class="panel-toggle" id="panelToggle" title="Show controls">☰ Controls</button>
+    <div class="stage-mark">Ply<span class="dot">.</span>er</div>
     <div class="load-overlay" id="loadOverlay">
       <div class="load-orb"><div class="ring"></div><div class="core"></div></div>
       <div class="load-text" id="loadText">Loading</div>
@@ -3676,7 +3679,7 @@ $('panelToggle').addEventListener('click',()=>setDrawer(false));
 $('drawerClose').addEventListener('click',()=>setDrawer(true));
 // start with the preview as the main view on phones/tablets
 if(window.matchMedia('(max-width:1023px)').matches) setDrawer(true);
-$('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{ $('viewInput').click(); });
+$('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{ setDrawer(false); $('viewInput').click(); });
 
 /* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
 let mvLoaded=null, mvBlobUrl=null;
@@ -3734,8 +3737,9 @@ async function composeCard(){
   const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#150f1f'); g.addColorStop(1,'#0a0b10'); x.fillStyle=g; x.fillRect(0,0,W,H);
   const rg=x.createRadialGradient(W*0.78,140,0,W*0.78,140,560); rg.addColorStop(0,'rgba(200,121,255,.22)'); rg.addColorStop(1,'rgba(200,121,255,0)'); x.fillStyle=rg; x.fillRect(0,0,W,H);
   x.textBaseline='top';
-  x.fillStyle='#f1ebf7'; x.font='600 66px "Space Grotesk",system-ui,sans-serif'; x.fillText('Plyer', 72, 70);
-  const tw0=x.measureText('Plyer').width; x.fillStyle='#c879ff'; x.fillText('.', 72+tw0, 70);
+  x.fillStyle='#f1ebf7'; x.font='600 66px "Space Grotesk",system-ui,sans-serif'; x.fillText('Ply', 72, 70);
+  const w1=x.measureText('Ply').width; x.fillStyle='#c879ff'; x.fillText('.', 72+w1, 70);
+  const wd=x.measureText('.').width; x.fillStyle='#f1ebf7'; x.fillText('er', 72+w1+wd, 70);
   x.fillStyle='#9aa0ad'; x.font='500 27px "JetBrains Mono",monospace'; x.fillText('splat viewer by PlayXR', 74, 158);
   const tx=72, ty=224, tW=W-144, tH=Math.round(tW*0.62);
   if(thumb){ try{ const im=await _loadImg(thumb); _rr(x,tx,ty,tW,tH,30); x.save(); x.clip(); _cover(x,im,tx,ty,tW,tH); x.restore(); }catch(e){} }
