@@ -128,7 +128,8 @@
   #viewerHost{position:absolute;inset:0}
   #viewerHost canvas{display:block}
   #ambient{position:absolute;inset:0;display:block}
-  .empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:none;text-align:center;padding:24px}
+  .empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;pointer-events:auto;text-align:center;padding:24px}
+  .empty.drag{outline:2px dashed var(--accent);outline-offset:-14px;border-radius:20px;background:rgba(200,121,255,.05)}
   .empty .ring{width:54px;height:54px;border-radius:50%;background:radial-gradient(circle at 50% 45%,rgba(200,121,255,.55),rgba(200,121,255,0) 70%);box-shadow:0 0 40px 6px rgba(200,121,255,.25);margin-bottom:4px}
   .empty h2{font-family:var(--display);font-weight:500;font-size:18px;margin:0;color:#cfd6e2}
   .empty p{margin:0;color:var(--faint);font-size:12.5px;max-width:300px;font-family:var(--mono)}
@@ -204,13 +205,18 @@
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}
   ::-webkit-scrollbar-track{background:transparent}
 
-  @media (max-width:900px){
-    .sidebar{width:min(92vw,400px)}
+  @media (max-width:1023px){
+    html,body{overflow:auto;height:auto}
+    .app{display:block;height:auto;min-height:100dvh;overflow:visible}
+    .stage{position:relative;inset:auto;height:64dvh;min-height:380px;width:100%}
+    .sidebar{position:relative;top:auto;left:auto;bottom:auto;width:100%;height:auto;z-index:auto;transform:none!important;transition:none;box-shadow:none;border-right:none;border-top:1px solid var(--border);background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none;overflow:visible}
+    .app.collapsed .sidebar{display:flex}     /* on mobile, controls always live below — reach by scrolling */
+    .panel-toggle{display:none!important}
+    .drawer-close{display:none}
     .convstage{padding:22px}
     .conv-head{font-size:21px}
   }
   @media (max-width:520px){
-    .sidebar{width:88vw}
     .panel-body{padding:14px;gap:15px}
     .brand{padding:18px 16px 14px}
     .stage-bar{top:10px;right:10px}
@@ -498,7 +504,7 @@
       <div class="ring"></div>
       <h2>Drop a splat to begin</h2>
       <p>Open a .ply / .splat / .ksplat or a .glb / .gltf mesh. Drag to orbit, pinch / scroll to zoom — then share it as a live 3D link.</p>
-      <button class="btn" id="emptyLoad" style="width:auto;margin-top:16px">☰ Show / hide panel</button>
+      <button class="btn" id="emptyLoad" style="width:auto;margin-top:16px">Load a file</button>
     </div>
 
     <div class="convstage" id="convStage">
@@ -3681,10 +3687,16 @@ $('panelToggle').addEventListener('click',()=>setDrawer(false));
 $('drawerClose').addEventListener('click',()=>setDrawer(true));
 // start with the preview as the main view on phones/tablets
 if(window.matchMedia('(max-width:1023px)').matches) setDrawer(true);
-$('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{
-  const collapsed=document.querySelector('.app').classList.contains('collapsed');
-  setDrawer(!collapsed);            // show / hide the side control panel
-});
+$('emptyLoad') && $('emptyLoad').addEventListener('click',(e)=>{ e.stopPropagation(); $('viewInput').click(); });
+// upload directly from the stage: tap the empty state or drop files onto it
+(function stageUpload(){
+  const es=$('emptyState'); if(!es) return;
+  es.style.cursor='pointer';
+  es.addEventListener('click',(e)=>{ if(e.target.id==='emptyLoad') return; $('viewInput').click(); });
+  ['dragenter','dragover'].forEach(ev=>es.addEventListener(ev,e=>{ e.preventDefault(); es.classList.add('drag'); }));
+  ['dragleave','dragend','drop'].forEach(ev=>es.addEventListener(ev,e=>{ e.preventDefault(); es.classList.remove('drag'); }));
+  es.addEventListener('drop',e=>{ const fs=e.dataTransfer&&e.dataTransfer.files; if(fs&&fs.length) handleViewFiles(fs); });
+})();
 
 /* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
 let mvLoaded=null, mvBlobUrl=null;
