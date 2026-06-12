@@ -498,7 +498,7 @@
       <div class="ring"></div>
       <h2>Drop a splat to begin</h2>
       <p>Open a .ply / .splat / .ksplat or a .glb / .gltf mesh. Drag to orbit, pinch / scroll to zoom — then share it as a live 3D link.</p>
-      <button class="btn" id="emptyLoad" style="width:auto;margin-top:16px">Load a file</button>
+      <button class="btn" id="emptyLoad" style="width:auto;margin-top:16px">☰ Show / hide panel</button>
     </div>
 
     <div class="convstage" id="convStage">
@@ -3530,7 +3530,7 @@ async function cloudShare(){
     // record metadata (gives a short ?share=<id> link); fall back to a direct URL link if the table isn't set up
     let link;
     const xfLayer = art.layer ? {pos:art.layer.pos, rot:art.layer.rot, scale:art.layer.scale, alpha:art.layer.alpha} : null;
-    const meta = { up: $('viewUp').value, xf: xfLayer };
+    const meta = { up: $('viewUp').value, xf: xfLayer, cam: captureCam() };
     const row={ name:art.name, path, format:ext, url:publicUrl, meta };
     if(loggedIn()) row.expires_at=null;            // keep permanently for signed-in users
     try{
@@ -3624,6 +3624,8 @@ async function loadFromUrl(url, fmt, name, meta){
         if(xf.scale!=null) l.scale=xf.scale; if(xf.alpha!=null) l.alpha=xf.alpha;
         renderLayerList(); await rebuild();
       }
+      // reproduce the sharer's camera (position / angle / target) — after framing settles
+      if(meta && meta.cam){ requestAnimationFrame(()=>requestAnimationFrame(()=>applyCam(meta.cam))); }
     }
   }catch(e){ hideLoading(); console.error(e); setViewStatus('Couldn\u2019t load shared scene: '+(e&&e.message?e.message:'error'),'err'); }
 }
@@ -3681,8 +3683,7 @@ $('drawerClose').addEventListener('click',()=>setDrawer(true));
 if(window.matchMedia('(max-width:1023px)').matches) setDrawer(true);
 $('emptyLoad') && $('emptyLoad').addEventListener('click',()=>{
   const collapsed=document.querySelector('.app').classList.contains('collapsed');
-  setDrawer(!collapsed);            // toggle show / hide the control panel
-  $('viewInput').click();
+  setDrawer(!collapsed);            // show / hide the side control panel
 });
 
 /* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
