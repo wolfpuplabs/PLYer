@@ -457,7 +457,6 @@
     </div>
     <div class="stage-bar" id="stageBar">
       <div class="pill" id="pillAR" style="display:none">⛶ AR</div>
-      <div class="pill" id="pillShare" style="display:none">⇪ Share</div>
       <div class="pill" id="pillCloud" style="display:none">☁ Link</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
@@ -3051,7 +3050,7 @@ async function loadMeshFromArrayBuffer(buf, name){
     }
     frameMesh();
     hideLoading(); ambient.style.display='none';
-    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display=''; $('pillCloud').style.display='';
+    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
     if(typeof arVisible==='function') arVisible();
     setViewStatus('Mesh loaded · '+(name||'model')+(m.clipCount?(' · '+m.clipCount+' animation'+(m.clipCount>1?'s':'')+' playing'):''),'ok');
     window.dispatchEvent(new Event('resize'));
@@ -3124,7 +3123,7 @@ async function rebuild(){
     if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
     hideLoading();
   }
-  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillShare').style.display=''; $('pillCloud').style.display='';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
   $('pillAR') && ($('pillAR').textContent = arPrep ? '✕ Exit AR' : '⛶ AR');
   arVisible();
 }
@@ -3406,7 +3405,6 @@ async function shareView(){
     }
   }catch(e){ if(e&&e.name==='AbortError'){ return; } setViewStatus('Share canceled.','warn'); }
 }
-$('pillShare').addEventListener('click',shareView);
 
 /* =====================================================
    CLOUD SHARE — Supabase Storage + shares table
@@ -3723,9 +3721,12 @@ async function openMeshAR(){
   mv.setAttribute('camera-controls',''); mv.setAttribute('touch-action','pan-y');
   mv.setAttribute('shadow-intensity','1'); mv.setAttribute('environment-image','neutral'); mv.setAttribute('ar-scale','auto');
   mv.setAttribute('autoplay','');   // play glTF animations in the in-browser view (and Android AR)
+  // explicit "View in AR" button (model-viewer shows it when AR is available, hides otherwise)
+  let arBtn=mv.querySelector('[slot="ar-button"]');
+  if(!arBtn){ arBtn=document.createElement('button'); arBtn.setAttribute('slot','ar-button'); arBtn.className='mv-ar'; arBtn.textContent='⛶ View in AR'; mv.appendChild(arBtn); }
   mv.src=mvBlobUrl;
   ov.classList.add('show');
-  setViewStatus('Tap the AR button in the viewer to place it in your room.','ok');
+  setViewStatus('Tap “View in AR” to place it in your room.','ok');
 }
 $('mvClose').addEventListener('click',()=>{ $('mvOverlay').classList.remove('show'); });
 
