@@ -3123,12 +3123,13 @@ async function addMeshObject(buf, name){
   if(!obj) throw new Error('no scene in file');
   obj.name = obj.name || (name||('object '+(composeId+1)));
   m.group.add(obj);
-  if(gltf.animations && gltf.animations.length){
+  const clips=(gltf.animations&&gltf.animations.length)?gltf.animations.slice():[];
+  if(clips.length){
     const mx=new THREE.AnimationMixer(obj);
-    gltf.animations.forEach(clip=>mx.clipAction(clip).play());
-    m.mixers.push(mx); m.clipCount=(m.clipCount||0)+gltf.animations.length;
+    clips.forEach(clip=>mx.clipAction(clip).play());
+    m.mixers.push(mx); m.clipCount=(m.clipCount||0)+clips.length;
   }
-  const rec={ id:++composeId, name:(name||obj.name||('object '+composeId)).replace(/\.(glb|gltf)$/i,''), node:obj };
+  const rec={ id:++composeId, name:(name||obj.name||('object '+composeId)).replace(/\.(glb|gltf)$/i,''), node:obj, clips };
   m.objects.push(rec);
   return rec;
 }
@@ -3200,11 +3201,13 @@ function setGizmoMode(mode){
 async function exportComposedGLB(){
   if(!(mesh && mesh.objects && mesh.objects.length)) throw new Error('nothing to export');
   const keep=mesh.selected; try{ mesh.gizmo.detach(); }catch(e){}   // don't bake the gizmo
+  const clips=[]; mesh.objects.forEach(o=>{ if(o.clips&&o.clips.length) clips.push(...o.clips); }); // include every object's animations
   const exporter=new mesh.deps.GLTFExporter();
-  const out=await new Promise((res,rej)=>{ try{ exporter.parse(mesh.group, r=>res(r), err=>rej(err||new Error('export failed')), {binary:true}); }catch(e){ rej(e); } });
+  const opts={ binary:true, animations:clips, onlyVisible:true };
+  const out=await new Promise((res,rej)=>{ try{ exporter.parse(mesh.group, r=>res(r), err=>rej(err||new Error('export failed')), opts); }catch(e){ rej(e); } });
   if(keep){ try{ mesh.gizmo.attach(keep); }catch(e){} }
   const buf=(out instanceof ArrayBuffer)?out:new TextEncoder().encode(JSON.stringify(out)).buffer;
-  mesh.sourceBytes=buf; mesh.sourceName='composition.glb';
+  mesh.sourceBytes=buf; mesh.sourceName='composition.glb'; mesh.exportClipCount=clips.length;
   return buf;
 }
 $('cmTranslate') && $('cmTranslate').addEventListener('click',()=>setGizmoMode('translate'));
@@ -3216,7 +3219,7 @@ $('cmExport') && $('cmExport').addEventListener('click',async()=>{
     const blob=new Blob([buf],{type:'model/gltf-binary'}); const a=document.createElement('a');
     a.href=URL.createObjectURL(blob); a.download='composition.glb'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),4000);
-    setViewStatus('Exported composition.glb ('+(buf.byteLength/1048576).toFixed(2)+' MB)','ok');
+    setViewStatus('Exported composition.glb ('+(buf.byteLength/1048576).toFixed(2)+' MB'+(mesh.exportClipCount?', '+mesh.exportClipCount+' animation'+(mesh.exportClipCount>1?'s':''):'')+') — Android AR animates; iOS needs a .usdz.','ok');
   }catch(e){ hideLoading(); setViewStatus('Export failed: '+(e&&e.message||'unknown'),'err'); }
 });
 
