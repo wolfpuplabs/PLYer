@@ -90,6 +90,8 @@
   .compose-row .del{color:var(--faint);font-family:var(--mono);padding:2px 6px;border-radius:6px}
   .compose-row .del:hover{color:#ff7676;background:rgba(255,118,118,.1)}
   .compose-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .usdz-x{cursor:pointer;color:var(--faint);font-family:var(--mono)}
+  .usdz-x:hover{color:#ff7676}
   .group-title .count{color:var(--accent);letter-spacing:.05em}
   .field{display:flex;flex-direction:column;gap:6px}
   .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -318,6 +320,8 @@
           <div id="composeList" class="compose-list"></div>
           <div id="composeUsdz" class="hint" style="color:var(--accent)"></div>
           <div class="compose-actions">
+            <button class="btn" id="cmUndo" style="width:auto" disabled>↶ Undo</button>
+            <button class="btn" id="cmRedo" style="width:auto" disabled>↷ Redo</button>
             <button class="btn" id="cmAddMore" style="width:auto">＋ Add GLB</button>
             <button class="btn" id="cmExport" style="width:auto">⤓ Save GLB</button>
           </div>
@@ -3089,7 +3093,12 @@ async function startMeshMode(){
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
   mesh={renderer,scene,camera,controls,group,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0};
-  gizmo.addEventListener('dragging-changed', e=>{ controls.enabled=!e.value; });
+  gizmo.addEventListener('dragging-changed', e=>{
+    controls.enabled=!e.value;
+    if(e.value){ gizmoBefore = (typeof snapTRS==='function')?snapTRS(mesh&&mesh.selected):null; }
+    else if(gizmoBefore && mesh && mesh.selected){ pushHistory(mesh.selected, gizmoBefore, snapTRS(mesh.selected)); gizmoBefore=null; }
+  });
+  composeUndo=[]; composeRedo=[]; gizmoBefore=null; if(typeof updateUndoButtons==='function') updateUndoButtons();
   const loop=()=>{ if(!mesh) return; const dt=mesh.clock.getDelta(); if(mesh.mixers&&mesh.mixers.length) mesh.mixers.forEach(mx=>mx.update(dt)); controls.update(); renderer.render(scene,camera); mesh.raf=requestAnimationFrame(loop); };
   mesh.raf=requestAnimationFrame(loop);
   meshActive=true;
@@ -3167,7 +3176,16 @@ function renderComposeList(){
   g.style.display=''; g.classList.remove('collapsed');
   $('composeCount').textContent = mesh.objects.length+'';
   const list=$('composeList'); list.innerHTML='';
-  const u=$('composeUsdz'); if(u) u.textContent = mesh.usdzBytes ? ('🍎 iOS AR: '+(mesh.usdzName||'model.usdz')+' (animated)') : '';
+  const u=$('composeUsdz');
+  if(u){ u.innerHTML='';
+    if(mesh.usdzBytes){
+      const t=document.createElement('span'); t.textContent='🍎 iOS AR: '+(mesh.usdzName||'model.usdz')+' (animated)';
+      const x=document.createElement('span'); x.textContent=' ✕'; x.className='usdz-x'; x.title='Remove .usdz';
+      x.addEventListener('click',e=>{ e.stopPropagation(); removeUsdz(); });
+      u.appendChild(t); u.appendChild(x);
+    }
+  }
+  if(typeof updateUndoButtons==='function') updateUndoButtons();
   mesh.objects.forEach(rec=>{
     const row=document.createElement('div'); row.className='compose-row'+(mesh.selected===rec.node?' sel':'');
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=rec.name;
@@ -3221,6 +3239,36 @@ $('cmExport') && $('cmExport').addEventListener('click',async()=>{
     setTimeout(()=>URL.revokeObjectURL(a.href),4000);
     setViewStatus('Exported composition.glb ('+(buf.byteLength/1048576).toFixed(2)+' MB'+(mesh.exportClipCount?', '+mesh.exportClipCount+' animation'+(mesh.exportClipCount>1?'s':''):'')+') — Android AR animates; iOS needs a .usdz.','ok');
   }catch(e){ hideLoading(); setViewStatus('Export failed: '+(e&&e.message||'unknown'),'err'); }
+});
+
+function removeUsdz(){
+  if(!mesh) return;
+  mesh.usdzBytes=null; mesh.usdzName=null;
+  if(mvUsdzUrl){ try{ URL.revokeObjectURL(mvUsdzUrl); }catch(e){} mvUsdzUrl=null; }
+  renderComposeList(); if(typeof arVisible==='function') arVisible();
+  setViewStatus('Removed the iOS .usdz.','ok');
+}
+
+/* ---- compose undo / redo (object transforms) ---- */
+let composeUndo=[], composeRedo=[], gizmoBefore=null;
+function snapTRS(node){ if(!node) return null; return { p:node.position.toArray(), q:node.quaternion.toArray(), s:node.scale.toArray() }; }
+function applyTRS(node,t){ if(!node||!t) return; node.position.fromArray(t.p); node.quaternion.fromArray(t.q); node.scale.fromArray(t.s); node.updateMatrixWorld(true); }
+function selectByNode(node){ const rec=mesh&&mesh.objects&&mesh.objects.find(o=>o.node===node); if(rec) selectComposeObject(rec.id); }
+function updateUndoButtons(){ const u=$('cmUndo'),r=$('cmRedo'); if(u) u.disabled=!composeUndo.length; if(r) r.disabled=!composeRedo.length; }
+function pushHistory(node,before,after){
+  if(!before||!after||JSON.stringify(before)===JSON.stringify(after)) return;
+  composeUndo.push({node,before,after}); if(composeUndo.length>60) composeUndo.shift();
+  composeRedo.length=0; updateUndoButtons();
+}
+function composeUndoAct(){ const h=composeUndo.pop(); if(!h) return; applyTRS(h.node,h.before); composeRedo.push(h); selectByNode(h.node); updateUndoButtons(); }
+function composeRedoAct(){ const h=composeRedo.pop(); if(!h) return; applyTRS(h.node,h.after); composeUndo.push(h); selectByNode(h.node); updateUndoButtons(); }
+$('cmUndo') && $('cmUndo').addEventListener('click',composeUndoAct);
+$('cmRedo') && $('cmRedo').addEventListener('click',composeRedoAct);
+window.addEventListener('keydown',e=>{
+  if(!(meshActive&&mesh)) return;
+  const z=(e.key==='z'||e.key==='Z');
+  if((e.metaKey||e.ctrlKey)&&z){ e.preventDefault(); if(e.shiftKey) composeRedoAct(); else composeUndoAct(); }
+  else if((e.metaKey||e.ctrlKey)&&(e.key==='y'||e.key==='Y')){ e.preventDefault(); composeRedoAct(); }
 });
 
 function isMeshName(n){ return /\.(glb|gltf)$/i.test(n||''); }
