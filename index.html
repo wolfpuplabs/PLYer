@@ -82,6 +82,14 @@
   .group-content{display:grid;grid-template-rows:1fr;transition:grid-template-rows .26s ease}
   .group.collapsed .group-content{grid-template-rows:0fr}
   .group-inner{overflow:hidden;min-height:0;display:flex;flex-direction:column;gap:13px;padding-top:13px}
+  .compose-modes{display:flex;gap:8px}
+  .compose-list{display:flex;flex-direction:column;gap:6px}
+  .compose-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);cursor:pointer;font-size:12.5px;transition:.12s}
+  .compose-row.sel{border-color:var(--accent);background:rgba(200,121,255,.08)}
+  .compose-row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .compose-row .del{color:var(--faint);font-family:var(--mono);padding:2px 6px;border-radius:6px}
+  .compose-row .del:hover{color:#ff7676;background:rgba(255,118,118,.1)}
+  .compose-actions{display:flex;gap:8px;flex-wrap:wrap}
   .group-title .count{color:var(--accent);letter-spacing:.05em}
   .field{display:flex;flex-direction:column;gap:6px}
   .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -299,6 +307,21 @@
             <input type="file" id="viewInput" multiple hidden />
           </div>
         </details>
+
+        <div class="group" id="composeGroup" style="display:none">
+          <div class="group-title"><span>Compose · GLB</span><span class="count" id="composeCount"></span></div>
+          <div class="compose-modes">
+            <button class="chip on" id="cmTranslate">⤧ Move</button>
+            <button class="chip" id="cmRotate">⟳ Rotate</button>
+            <button class="chip" id="cmScale">⤢ Scale</button>
+          </div>
+          <div id="composeList" class="compose-list"></div>
+          <div class="compose-actions">
+            <button class="btn" id="cmAddMore" style="width:auto">＋ Add GLB</button>
+            <button class="btn" id="cmExport" style="width:auto">⤓ Save GLB</button>
+          </div>
+          <div class="hint">Tap an object to select, then drag the gizmo to move / rotate / scale. Export bakes everything into one .glb for AR &amp; sharing.</div>
+        </div>
 
         <div class="group">
           <div class="group-title"><span>Scene layers</span><span class="count" id="layerCount"></span></div>
@@ -3011,11 +3034,13 @@ function disposeMeshViewer(){
   if(mesh){
     try{ cancelAnimationFrame(mesh.raf); }catch(e){}
     try{ window.removeEventListener('resize', mesh.onResize); }catch(e){}
+    try{ mesh.gizmo && mesh.gizmo.detach(); mesh.gizmo && mesh.gizmo.dispose(); }catch(e){}
     try{ mesh.controls && mesh.controls.dispose(); }catch(e){}
     try{ mesh.renderer && mesh.renderer.dispose(); }catch(e){}
     mesh=null;
   }
   meshActive=false;
+  const g=$('composeGroup'); if(g) g.style.display='none';
 }
 
 /* ---- three.js GLB/GLTF mesh viewer (lazy-loaded addons) ---- */
@@ -3023,13 +3048,15 @@ const MESH_CDN='https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/';
 let meshDeps=null;
 async function loadMeshDeps(){
   if(meshDeps) return meshDeps;
-  const [gltf,orbit,draco,roomenv]=await Promise.all([
+  const [gltf,orbit,draco,roomenv,tc,exp]=await Promise.all([
     import(MESH_CDN+'loaders/GLTFLoader.js'),
     import(MESH_CDN+'controls/OrbitControls.js'),
     import(MESH_CDN+'loaders/DRACOLoader.js'),
-    import(MESH_CDN+'environments/RoomEnvironment.js')
+    import(MESH_CDN+'environments/RoomEnvironment.js'),
+    import(MESH_CDN+'controls/TransformControls.js'),
+    import(MESH_CDN+'exporters/GLTFExporter.js')
   ]);
-  meshDeps={ GLTFLoader:gltf.GLTFLoader, OrbitControls:orbit.OrbitControls, DRACOLoader:draco.DRACOLoader, RoomEnvironment:roomenv.RoomEnvironment };
+  meshDeps={ GLTFLoader:gltf.GLTFLoader, OrbitControls:orbit.OrbitControls, DRACOLoader:draco.DRACOLoader, RoomEnvironment:roomenv.RoomEnvironment, TransformControls:tc.TransformControls, GLTFExporter:exp.GLTFExporter };
   return meshDeps;
 }
 
@@ -3055,10 +3082,14 @@ async function startMeshMode(){
   const key=new THREE.DirectionalLight(0xffffff,2.0); key.position.set(3,5,4); scene.add(key);
   scene.add(new THREE.AmbientLight(0xffffff,0.45));
   const group=new THREE.Group(); scene.add(group);
+  const gizmo=new deps.TransformControls(camera, renderer.domElement);
+  gizmo.setSpace('local'); gizmo.size=0.9;
+  scene.add(gizmo);
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
-  mesh={renderer,scene,camera,controls,group,env,pmrem,onResize,raf:0,deps,mixer:null,clock:new THREE.Clock()};
-  const loop=()=>{ if(!mesh) return; const dt=mesh.clock.getDelta(); if(mesh.mixer) mesh.mixer.update(dt); controls.update(); renderer.render(scene,camera); mesh.raf=requestAnimationFrame(loop); };
+  mesh={renderer,scene,camera,controls,group,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0};
+  gizmo.addEventListener('dragging-changed', e=>{ controls.enabled=!e.value; });
+  const loop=()=>{ if(!mesh) return; const dt=mesh.clock.getDelta(); if(mesh.mixers&&mesh.mixers.length) mesh.mixers.forEach(mx=>mx.update(dt)); controls.update(); renderer.render(scene,camera); mesh.raf=requestAnimationFrame(loop); };
   mesh.raf=requestAnimationFrame(loop);
   meshActive=true;
   return mesh;
@@ -3081,38 +3112,111 @@ function frameMesh(){
   mesh.controls.target.copy(c); mesh.controls.update();
 }
 
+let composeId=0;
+async function addMeshObject(buf, name){
+  const m=mesh;
+  const loader=new m.deps.GLTFLoader();
+  try{ const d=new m.deps.DRACOLoader(); d.setDecoderPath(MESH_CDN+'libs/draco/'); loader.setDRACOLoader(d); }catch(e){}
+  const gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
+  const obj=gltf.scene||(gltf.scenes&&gltf.scenes[0]);
+  if(!obj) throw new Error('no scene in file');
+  obj.name = obj.name || (name||('object '+(composeId+1)));
+  m.group.add(obj);
+  if(gltf.animations && gltf.animations.length){
+    const mx=new THREE.AnimationMixer(obj);
+    gltf.animations.forEach(clip=>mx.clipAction(clip).play());
+    m.mixers.push(mx); m.clipCount=(m.clipCount||0)+gltf.animations.length;
+  }
+  const rec={ id:++composeId, name:(name||obj.name||('object '+composeId)).replace(/\.(glb|gltf)$/i,''), node:obj };
+  m.objects.push(rec);
+  return rec;
+}
+
 async function loadMeshFromArrayBuffer(buf, name){
-  showLoading('Loading mesh','GLB / GLTF'); emptyState.style.display='none';
+  const adding = meshActive && mesh;
+  showLoading(adding?'Adding to scene':'Loading mesh','GLB / GLTF'); emptyState.style.display='none';
   try{
-    const m=await startMeshMode();
-    m.sourceBytes = (buf instanceof ArrayBuffer) ? buf.slice(0) : buf;   // kept for cloud share
+    if(!adding){ await startMeshMode(); }
+    const m=mesh;
+    const rec=await addMeshObject(buf, name);
+    m.sourceBytes = (buf instanceof ArrayBuffer) ? buf.slice(0) : buf;   // last raw file (refreshed on export)
     m.sourceName = name || 'model.glb';
-    const loader=new m.deps.GLTFLoader();
-    try{ const d=new m.deps.DRACOLoader(); d.setDecoderPath(MESH_CDN+'libs/draco/'); loader.setDRACOLoader(d); }catch(e){}
-    const gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
-    const obj=gltf.scene||(gltf.scenes&&gltf.scenes[0]);
-    if(!obj) throw new Error('no scene in file');
-    m.group.add(obj);
-    // autoplay any embedded animation clips
-    if(gltf.animations && gltf.animations.length){
-      m.mixer=new THREE.AnimationMixer(obj);
-      gltf.animations.forEach(clip=>m.mixer.clipAction(clip).play());
-      m.clipCount=gltf.animations.length;
-    }
-    frameMesh();
+    if(!adding) frameMesh();
+    selectComposeObject(rec.id);
+    renderComposeList();
     hideLoading(); ambient.style.display='none';
     stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
     if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none';
     if(typeof arVisible==='function') arVisible();
-    setViewStatus('Mesh loaded · '+(name||'model')+(m.clipCount?(' · '+m.clipCount+' animation'+(m.clipCount>1?'s':'')+' playing'):''),'ok');
+    setViewStatus((adding?'Added ':'Mesh loaded · ')+(rec.name||'model')+' · '+mesh.objects.length+' object'+(mesh.objects.length>1?'s':''),'ok');
     window.dispatchEvent(new Event('resize'));
   }catch(err){
-    console.error(err); hideLoading(); disposeMeshViewer(); host.innerHTML='';
-    emptyState.style.display='flex';
+    console.error(err); hideLoading();
+    if(!(meshActive&&mesh&&mesh.objects.length)){ disposeMeshViewer(); host.innerHTML=''; emptyState.style.display='flex'; }
     setViewStatus('Couldn\u2019t load mesh: '+(err&&err.message?err.message:'unknown'),'err');
   }
 }
 async function loadMeshFile(file){ const buf=await file.arrayBuffer(); await loadMeshFromArrayBuffer(buf, file.name); }
+
+/* ---- compose editor (multiple GLB → one scene → export) ---- */
+function renderComposeList(){
+  const g=$('composeGroup'); if(!g) return;
+  if(!(meshActive && mesh && mesh.objects)){ g.style.display='none'; return; }
+  g.style.display=''; g.classList.remove('collapsed');
+  $('composeCount').textContent = mesh.objects.length+'';
+  const list=$('composeList'); list.innerHTML='';
+  mesh.objects.forEach(rec=>{
+    const row=document.createElement('div'); row.className='compose-row'+(mesh.selected===rec.node?' sel':'');
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=rec.name;
+    const del=document.createElement('span'); del.className='del'; del.textContent='✕';
+    row.appendChild(nm); row.appendChild(del);
+    row.addEventListener('click',e=>{ if(e.target===del) return; selectComposeObject(rec.id); });
+    del.addEventListener('click',e=>{ e.stopPropagation(); deleteComposeObject(rec.id); });
+    list.appendChild(row);
+  });
+}
+function selectComposeObject(id){
+  if(!mesh) return; const rec=mesh.objects.find(o=>o.id===id); if(!rec) return;
+  mesh.selected=rec.node; try{ mesh.gizmo.attach(rec.node); }catch(e){}
+  renderComposeList();
+}
+function deleteComposeObject(id){
+  if(!mesh) return; const i=mesh.objects.findIndex(o=>o.id===id); if(i<0) return;
+  const rec=mesh.objects[i];
+  if(mesh.selected===rec.node){ try{ mesh.gizmo.detach(); }catch(e){} mesh.selected=null; }
+  try{ mesh.group.remove(rec.node); }catch(e){}
+  mesh.objects.splice(i,1);
+  if(mesh.objects.length && !mesh.selected) selectComposeObject(mesh.objects[mesh.objects.length-1].id);
+  renderComposeList();
+  if(!mesh.objects.length) setViewStatus('Composition is empty — add a GLB.','warn');
+}
+function setGizmoMode(mode){
+  if(mesh&&mesh.gizmo){ try{ mesh.gizmo.setMode(mode); }catch(e){} }
+  ['cmTranslate','cmRotate','cmScale'].forEach(id=>$(id)&&$(id).classList.remove('on'));
+  $({translate:'cmTranslate',rotate:'cmRotate',scale:'cmScale'}[mode]) && $({translate:'cmTranslate',rotate:'cmRotate',scale:'cmScale'}[mode]).classList.add('on');
+}
+async function exportComposedGLB(){
+  if(!(mesh && mesh.objects && mesh.objects.length)) throw new Error('nothing to export');
+  const keep=mesh.selected; try{ mesh.gizmo.detach(); }catch(e){}   // don't bake the gizmo
+  const exporter=new mesh.deps.GLTFExporter();
+  const out=await new Promise((res,rej)=>{ try{ exporter.parse(mesh.group, r=>res(r), err=>rej(err||new Error('export failed')), {binary:true}); }catch(e){ rej(e); } });
+  if(keep){ try{ mesh.gizmo.attach(keep); }catch(e){} }
+  const buf=(out instanceof ArrayBuffer)?out:new TextEncoder().encode(JSON.stringify(out)).buffer;
+  mesh.sourceBytes=buf; mesh.sourceName='composition.glb';
+  return buf;
+}
+$('cmTranslate') && $('cmTranslate').addEventListener('click',()=>setGizmoMode('translate'));
+$('cmRotate') && $('cmRotate').addEventListener('click',()=>setGizmoMode('rotate'));
+$('cmScale') && $('cmScale').addEventListener('click',()=>setGizmoMode('scale'));
+$('cmAddMore') && $('cmAddMore').addEventListener('click',()=>$('viewInput').click());
+$('cmExport') && $('cmExport').addEventListener('click',async()=>{
+  try{ showLoading('Exporting','baking one GLB'); const buf=await exportComposedGLB(); hideLoading();
+    const blob=new Blob([buf],{type:'model/gltf-binary'}); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='composition.glb'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    setViewStatus('Exported composition.glb ('+(buf.byteLength/1048576).toFixed(2)+' MB)','ok');
+  }catch(e){ hideLoading(); setViewStatus('Export failed: '+(e&&e.message||'unknown'),'err'); }
+});
 
 function isMeshName(n){ return /\.(glb|gltf)$/i.test(n||''); }
 async function handleViewFiles(fileList){
@@ -3121,7 +3225,7 @@ async function handleViewFiles(fileList){
   const splats=files.filter(f=>formatFromName(f.name)!==null);
   if(meshes.length){
     if(splats.length) setViewStatus('Loaded the mesh; splat files in the same drop were skipped (modes are separate).','warn');
-    await loadMeshFile(meshes[0]);
+    for(const f of meshes){ await loadMeshFile(f); }
     return;
   }
   if(splats.length){ if(meshActive){ disposeMeshViewer(); host.innerHTML=''; } await addFiles(splats); return; }
@@ -3764,9 +3868,11 @@ function loadModelViewer(){
   return mvLoaded;
 }
 async function openMeshAR(){
-  if(!(mesh && mesh.sourceBytes)){ setViewStatus('Load a .glb / .gltf mesh first.','warn'); return; }
+  if(!(mesh && (mesh.sourceBytes || (mesh.objects&&mesh.objects.length)))){ setViewStatus('Load a .glb / .gltf mesh first.','warn'); return; }
   setViewStatus('Preparing AR…','warn');
   try{ await loadModelViewer(); }catch(e){ setViewStatus('Could not load the AR component (needs internet).','err'); return; }
+  // bake the current composition (positions/rotations/scales of every object) into one GLB
+  if(mesh.objects && mesh.objects.length){ try{ await exportComposedGLB(); }catch(e){ setViewStatus('Could not bake composition: '+(e&&e.message||'err'),'err'); return; } }
   const ov=$('mvOverlay');
   if(mvBlobUrl){ URL.revokeObjectURL(mvBlobUrl); }
   mvBlobUrl=URL.createObjectURL(new Blob([mesh.sourceBytes],{type:'model/gltf-binary'}));
