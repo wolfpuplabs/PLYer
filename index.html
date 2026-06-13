@@ -3531,10 +3531,17 @@ $('bmSave').addEventListener('click',doSave);
 $('pillSave').addEventListener('click',doSave);
 $('pillFrame').addEventListener('click',()=>{ if(meshActive) frameMesh(); else frameScene(); });
 
+function meshCleanRender(){
+  if(!(meshActive&&mesh)) return;
+  const keep=mesh.selected; let det=false;
+  try{ if(mesh.gizmo && mesh.gizmo.object){ mesh.gizmo.detach(); det=true; } }catch(e){}
+  try{ mesh.renderer.render(mesh.scene, mesh.camera); }catch(e){}
+  if(det && keep){ try{ mesh.gizmo.attach(keep); }catch(e){} }
+}
 function captureThumb(maxW){
   try{
     let canvas=null;
-    if(meshActive && mesh){ try{ mesh.renderer.render(mesh.scene, mesh.camera); }catch(e){} canvas=mesh.renderer.domElement; }
+    if(meshActive && mesh){ meshCleanRender(); canvas=mesh.renderer.domElement; }
     else if(viewerActive && viewer){ try{ viewer.render(); }catch(e){} canvas=viewer.renderer && viewer.renderer.domElement; }
     if(!canvas || !canvas.width || !canvas.height) return null;
     const tw=Math.min(maxW||560,canvas.width), th=Math.round(canvas.height*(tw/canvas.width));
@@ -3546,7 +3553,7 @@ function captureThumb(maxW){
 
 async function shareView(){
   let canvas=null;
-  if(meshActive && mesh){ try{ mesh.renderer.render(mesh.scene, mesh.camera); }catch(e){} canvas=mesh.renderer.domElement; }
+  if(meshActive && mesh){ meshCleanRender(); canvas=mesh.renderer.domElement; }
   else if(viewerActive && viewer){ try{ viewer.render(); }catch(e){} canvas=viewer.renderer && viewer.renderer.domElement; }
   if(!canvas){ setViewStatus('Nothing to share yet.','warn'); return; }
   let url;
