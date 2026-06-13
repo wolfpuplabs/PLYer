@@ -303,7 +303,7 @@
           <summary class="loader-sum"><span class="ico">◈</span> Add splat / mesh</summary>
           <div class="loader-body" id="viewDrop">
             <span>Tap to choose · or drop files here</span>
-            <span class="fmt">.ply · .splat · .ksplat · .glb · .gltf</span>
+            <span class="fmt">.ply · .splat · .ksplat · .glb · .gltf · .usdz</span>
             <input type="file" id="viewInput" multiple hidden />
           </div>
         </details>
@@ -316,6 +316,7 @@
             <button class="chip" id="cmScale">⤢ Scale</button>
           </div>
           <div id="composeList" class="compose-list"></div>
+          <div id="composeUsdz" class="hint" style="color:var(--accent)"></div>
           <div class="compose-actions">
             <button class="btn" id="cmAddMore" style="width:auto">＋ Add GLB</button>
             <button class="btn" id="cmExport" style="width:auto">⤓ Save GLB</button>
@@ -3165,6 +3166,7 @@ function renderComposeList(){
   g.style.display=''; g.classList.remove('collapsed');
   $('composeCount').textContent = mesh.objects.length+'';
   const list=$('composeList'); list.innerHTML='';
+  const u=$('composeUsdz'); if(u) u.textContent = mesh.usdzBytes ? ('🍎 iOS AR: '+(mesh.usdzName||'model.usdz')+' (animated)') : '';
   mesh.objects.forEach(rec=>{
     const row=document.createElement('div'); row.className='compose-row'+(mesh.selected===rec.node?' sel':'');
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=rec.name;
@@ -3219,17 +3221,31 @@ $('cmExport') && $('cmExport').addEventListener('click',async()=>{
 });
 
 function isMeshName(n){ return /\.(glb|gltf)$/i.test(n||''); }
+function isUsdzName(n){ return /\.usdz$/i.test(n||''); }
+async function attachUsdz(file){
+  if(!(meshActive && mesh)){ await startMeshMode(); frameMesh(); }
+  const buf=await file.arrayBuffer();
+  mesh.usdzBytes=buf; mesh.usdzName=file.name||'model.usdz';
+  emptyState.style.display='none'; ambient.style.display='none';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
+  if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none';
+  renderComposeList(); if(typeof arVisible==='function') arVisible();
+  setViewStatus('iOS-AR file attached: '+mesh.usdzName+' — animations will play in iOS Quick Look.'+(mesh.objects&&mesh.objects.length?'':' Add a .glb too for on-screen preview & Android AR.'),'ok');
+}
 async function handleViewFiles(fileList){
   const files=[...fileList];
   const meshes=files.filter(f=>isMeshName(f.name));
+  const usdz=files.filter(f=>isUsdzName(f.name));
   const splats=files.filter(f=>formatFromName(f.name)!==null);
   if(meshes.length){
     if(splats.length) setViewStatus('Loaded the mesh; splat files in the same drop were skipped (modes are separate).','warn');
     for(const f of meshes){ await loadMeshFile(f); }
+    if(usdz.length) await attachUsdz(usdz[0]);
     return;
   }
+  if(usdz.length){ await attachUsdz(usdz[0]); return; }
   if(splats.length){ if(meshActive){ disposeMeshViewer(); host.innerHTML=''; } await addFiles(splats); return; }
-  setViewStatus('Unsupported file. Use .ply/.splat/.ksplat or .glb/.gltf.','err');
+  setViewStatus('Unsupported file. Use .ply/.splat/.ksplat, .glb/.gltf, or .usdz (iOS AR).','err');
 }
 
 async function rebuild(){
@@ -3828,7 +3844,7 @@ async function loadFromQuery(){
 })();
 function arVisible(){
   let ok=false;
-  if(meshActive && mesh && mesh.sourceBytes) ok=true;               // GLB → model-viewer AR (iOS Quick Look / Android)
+  if(meshActive && mesh && (mesh.sourceBytes || (mesh.objects&&mesh.objects.length) || mesh.usdzBytes)) ok=true;  // GLB and/or USDZ → model-viewer AR
   else if(viewerActive && !meshActive) ok = $('pillAR').dataset.ok==='1';  // splat → WebXR (Android only)
   $('pillAR').style.display = ok ? 'flex' : 'none';
   if(ok && !arPrep) $('pillAR').textContent = '⛶ View in AR';
@@ -3863,7 +3879,7 @@ $('emptyLoad') && $('emptyLoad').addEventListener('click',(e)=>{ e.stopPropagati
 })();
 
 /* ---- GLB → AR via <model-viewer> (iOS Quick Look auto-USDZ + Android Scene Viewer) ---- */
-let mvLoaded=null, mvBlobUrl=null;
+let mvLoaded=null, mvBlobUrl=null, mvUsdzUrl=null;
 function loadModelViewer(){
   if(mvLoaded) return mvLoaded;
   mvLoaded=new Promise((res,rej)=>{
@@ -3875,14 +3891,14 @@ function loadModelViewer(){
   return mvLoaded;
 }
 async function openMeshAR(){
-  if(!(mesh && (mesh.sourceBytes || (mesh.objects&&mesh.objects.length)))){ setViewStatus('Load a .glb / .gltf mesh first.','warn'); return; }
+  if(!(mesh && (mesh.sourceBytes || (mesh.objects&&mesh.objects.length) || mesh.usdzBytes))){ setViewStatus('Load a .glb / .gltf mesh or .usdz first.','warn'); return; }
   setViewStatus('Preparing AR…','warn');
   try{ await loadModelViewer(); }catch(e){ setViewStatus('Could not load the AR component (needs internet).','err'); return; }
   // bake the current composition (positions/rotations/scales of every object) into one GLB
   if(mesh.objects && mesh.objects.length){ try{ await exportComposedGLB(); }catch(e){ setViewStatus('Could not bake composition: '+(e&&e.message||'err'),'err'); return; } }
   const ov=$('mvOverlay');
-  if(mvBlobUrl){ URL.revokeObjectURL(mvBlobUrl); }
-  mvBlobUrl=URL.createObjectURL(new Blob([mesh.sourceBytes],{type:'model/gltf-binary'}));
+  if(mvBlobUrl){ URL.revokeObjectURL(mvBlobUrl); mvBlobUrl=null; }
+  if(mvUsdzUrl){ URL.revokeObjectURL(mvUsdzUrl); mvUsdzUrl=null; }
   let mv=ov.querySelector('model-viewer');
   if(!mv){ mv=document.createElement('model-viewer'); ov.insertBefore(mv, ov.firstChild); }
   mv.setAttribute('ar',''); mv.setAttribute('ar-modes','webxr scene-viewer quick-look');
@@ -3892,9 +3908,14 @@ async function openMeshAR(){
   // explicit "View in AR" button (model-viewer shows it when AR is available, hides otherwise)
   let arBtn=mv.querySelector('[slot="ar-button"]');
   if(!arBtn){ arBtn=document.createElement('button'); arBtn.setAttribute('slot','ar-button'); arBtn.className='mv-ar'; arBtn.textContent='⛶ View in AR'; mv.appendChild(arBtn); }
-  mv.src=mvBlobUrl;
+  // GLB drives the on-screen preview + Android Scene Viewer
+  if(mesh.sourceBytes){ mvBlobUrl=URL.createObjectURL(new Blob([mesh.sourceBytes],{type:'model/gltf-binary'})); mv.src=mvBlobUrl; }
+  else { mv.removeAttribute('src'); }
+  // a supplied .usdz overrides iOS Quick Look so animations play on iPhone/iPad
+  if(mesh.usdzBytes){ mvUsdzUrl=URL.createObjectURL(new Blob([mesh.usdzBytes],{type:'model/vnd.usdz+zip'})); mv.setAttribute('ios-src', mvUsdzUrl); }
+  else { mv.removeAttribute('ios-src'); }
   ov.classList.add('show');
-  setViewStatus('Tap “View in AR” to place it in your room.','ok');
+  setViewStatus(mesh.usdzBytes ? 'Tap “View in AR” — iOS will use your .usdz (animated).' : 'Tap “View in AR” to place it in your room.','ok');
 }
 $('mvClose').addEventListener('click',()=>{ $('mvOverlay').classList.remove('show'); });
 
