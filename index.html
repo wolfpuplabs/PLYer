@@ -317,6 +317,7 @@
             <button class="chip" id="cmRotate">⟳ Rotate</button>
             <button class="chip" id="cmScale">⤢ Scale</button>
             <button class="chip on" id="cmGrid">▦ Grid</button>
+            <button class="chip" id="cmSpace">🌐 World</button>
           </div>
           <div id="composeList" class="compose-list"></div>
           <div id="composeUsdz" class="hint" style="color:var(--accent)"></div>
@@ -3092,7 +3093,7 @@ async function startMeshMode(){
   grid.material.transparent=true; grid.material.opacity=0.5;
   scene.add(grid);
   const gizmo=new deps.TransformControls(camera, renderer.domElement);
-  gizmo.setSpace('local'); gizmo.size=0.9;
+  gizmo.setSpace('world'); gizmo.size=0.9;
   scene.add(gizmo);
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
@@ -3238,6 +3239,7 @@ $('cmRotate') && $('cmRotate').addEventListener('click',()=>setGizmoMode('rotate
 $('cmScale') && $('cmScale').addEventListener('click',()=>setGizmoMode('scale'));
 $('cmAddMore') && $('cmAddMore').addEventListener('click',()=>$('viewInput').click());
 $('cmGrid') && $('cmGrid').addEventListener('click',()=>{ if(!mesh||!mesh.grid) return; mesh.gridOn=!mesh.gridOn; mesh.grid.visible=mesh.gridOn; $('cmGrid').classList.toggle('on', mesh.gridOn); });
+$('cmSpace') && $('cmSpace').addEventListener('click',()=>{ if(!mesh||!mesh.gizmo) return; const world=mesh.gizmo.space!=='world'; mesh.gizmo.setSpace(world?'world':'local'); $('cmSpace').textContent= world?'🌐 World':'📍 Local'; });
 $('cmExport') && $('cmExport').addEventListener('click',async()=>{
   try{ showLoading('Exporting','baking one GLB'); const buf=await exportComposedGLB(); hideLoading();
     const blob=new Blob([buf],{type:'model/gltf-binary'}); const a=document.createElement('a');
