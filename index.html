@@ -163,6 +163,16 @@
     50%{box-shadow:0 8px 34px rgba(200,121,255,.62), 0 0 26px 7px rgba(200,121,255,.34)}
   }
   @media (prefers-reduced-motion:reduce){ .ar-dock{animation:none;box-shadow:0 8px 26px rgba(200,121,255,.45)} }
+  /* walk-mode HUD */
+  .pill.on{background:var(--accent);color:#1a0a26;border-color:var(--accent)}
+  .walk-hud{position:absolute;inset:0;z-index:7;pointer-events:none}
+  .walk-joy{position:absolute;left:24px;bottom:28px;width:128px;height:128px;border-radius:50%;background:rgba(15,18,25,.42);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px);pointer-events:auto;touch-action:none}
+  .walk-nub{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:var(--accent);box-shadow:0 4px 16px rgba(200,121,255,.5);transition:transform .04s}
+  .walk-vert{position:absolute;right:22px;bottom:30px;display:flex;flex-direction:column;gap:10px;pointer-events:auto}
+  .walk-btn{width:54px;height:54px;border-radius:14px;background:rgba(15,18,25,.6);border:1px solid var(--border);color:var(--text);font-size:15px;cursor:pointer;backdrop-filter:blur(6px);-webkit-tap-highlight-color:transparent}
+  .walk-btn:active{background:var(--accent);color:#1a0a26}
+  .walk-tip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);font-family:var(--mono);font-size:11px;color:rgba(240,235,247,.6);background:rgba(15,18,25,.5);padding:6px 12px;border-radius:8px;backdrop-filter:blur(6px);white-space:nowrap;pointer-events:none}
+  @media (max-width:1023px){ .walk-joy{width:112px;height:112px;left:18px;bottom:22px} .walk-nub{width:48px;height:48px;margin:-24px 0 0 -24px} }
   .pill{font-family:var(--mono);font-size:11.5px;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);padding:7px 12px;border-radius:8px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s}
   .pill:hover{border-color:var(--accent-dim)}
   .modal-back{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(6,7,11,.66);backdrop-filter:blur(6px)}
@@ -484,11 +494,21 @@
       <div class="load-sub"><span id="loadSub"></span><span class="dots"></span></div>
     </div>
     <div class="stage-bar" id="stageBar">
+      <div class="pill" id="pillWalk" style="display:none">🚶 Walk</div>
       <div class="pill" id="pillCloud" style="display:none">☁ Link</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
     </div>
     <button class="ar-dock" id="pillAR" style="display:none">⛶ View in AR</button>
+    <!-- walk-mode HUD -->
+    <div class="walk-hud" id="walkHud" style="display:none">
+      <div class="walk-joy" id="walkJoy"><div class="walk-nub" id="walkNub"></div></div>
+      <div class="walk-vert">
+        <button class="walk-btn" id="walkUp">▲</button>
+        <button class="walk-btn" id="walkDown">▼</button>
+      </div>
+      <div class="walk-tip" id="walkTip">Drag to look · joystick to move</div>
+    </div>
     <canvas id="ambient"></canvas>
     <div id="viewerHost"></div>
     <div class="modal-back" id="shareModal">
@@ -3079,6 +3099,7 @@ async function loadMeshFromArrayBuffer(buf, name){
     frameMesh();
     hideLoading(); ambient.style.display='none';
     stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
+    if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none';
     if(typeof arVisible==='function') arVisible();
     setViewStatus('Mesh loaded · '+(name||'model')+(m.clipCount?(' · '+m.clipCount+' animation'+(m.clipCount>1?'s':'')+' playing'):''),'ok');
     window.dispatchEvent(new Event('resize'));
@@ -3108,7 +3129,7 @@ async function rebuild(){
   const prevCam=captureCam();
   const visible=layers.filter(l=>!l.hidden);
   await disposeViewer();
-  if(!visible.length){ emptyState.style.display='flex'; ambient.style.display=''; stageBar.classList.remove('show'); hideLoading(); return; }
+  if(!visible.length){ if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none'; emptyState.style.display='flex'; ambient.style.display=''; stageBar.classList.remove('show'); hideLoading(); return; }
 
   // auto-level the very first build of a fresh scene so the object loads upright
   if(!didAutoLevel){ autoLevel(); didAutoLevel=true; }
@@ -3152,6 +3173,9 @@ async function rebuild(){
     hideLoading();
   }
   stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
+  $('pillWalk').style.display = arPrep ? 'none' : '';
+  if(arPrep && typeof exitWalk==='function') exitWalk();
+  if(walkMode && !arPrep && viewer && viewer.controls){ viewer.controls.enabled=false; walkLast=performance.now(); if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop); }
   $('pillAR') && ($('pillAR').textContent = arPrep ? '✕ Exit AR' : '⛶ AR');
   arVisible();
 }
@@ -4129,6 +4153,119 @@ function wireDrop(dropEl,inputEl,onFiles,multi){
   ['dragleave','dragend','drop'].forEach(ev=>dropEl.addEventListener(ev,e=>{e.preventDefault();dropEl.classList.remove('over');}));
   dropEl.addEventListener('drop',e=>{ const fs=e.dataTransfer.files; if(fs&&fs.length) onFiles(multi?fs:[fs[0]]); });
 }
+
+/* ---- first-person WALK mode (splat viewer) ---- */
+let walkMode=false, walkRAF=null, walkLast=0, walkSpeed=1;
+const walkKeys=Object.create(null);
+const walkDir=new THREE.Vector3(0,0,-1);
+let walkUpV=new THREE.Vector3(0,1,0);
+const walkLook={on:false,id:null,x:0,y:0};
+const walkJoyS={on:false,id:null,dx:0,dy:0};
+let walkVert=0; // -1 down, +1 up (held buttons)
+
+function canWalk(){ return viewerActive && !meshActive && viewer && viewer.camera && viewer.controls; }
+
+function enterWalk(){
+  if(!canWalk()) return;
+  walkMode=true;
+  const cam=viewer.camera, ctr=viewer.controls;
+  walkUpV.copy(cam.up).normalize(); if(walkUpV.lengthSq()<1e-6) walkUpV.set(0,1,0);
+  walkDir.copy(ctr.target).sub(cam.position); if(walkDir.lengthSq()<1e-6) walkDir.set(0,0,-1); walkDir.normalize();
+  walkSpeed=Math.max(cam.position.distanceTo(ctr.target)*0.6, 0.4);
+  ctr.enabled=false;
+  $('walkHud').style.display='';
+  $('pillWalk').classList.add('on'); $('pillWalk').textContent='🚪 Exit walk';
+  walkLast=performance.now();
+  if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop);
+}
+function exitWalk(){
+  walkMode=false;
+  if(walkRAF){ cancelAnimationFrame(walkRAF); walkRAF=null; }
+  $('walkHud').style.display='none';
+  $('pillWalk').classList.remove('on'); $('pillWalk').textContent='🚶 Walk';
+  walkJoyS.on=false; walkJoyS.dx=walkJoyS.dy=0; walkVert=0;
+  for(const k in walkKeys) delete walkKeys[k];
+  setNub(0,0);
+  if(canWalk()){ const cam=viewer.camera, ctr=viewer.controls; ctr.target.copy(cam.position).addScaledVector(walkDir, Math.max(walkSpeed,1)); ctr.enabled=true; ctr.update(); }
+}
+function toggleWalk(){ walkMode?exitWalk():enterWalk(); }
+
+function applyLook(dx,dy){
+  if(!canWalk()) return;
+  const cam=viewer.camera;
+  const sens=0.0042;
+  // yaw around scene-up
+  const qy=new THREE.Quaternion().setFromAxisAngle(walkUpV, -dx*sens);
+  walkDir.applyQuaternion(qy).normalize();
+  // pitch around current right axis, clamped so we don't flip over the up axis
+  const right=new THREE.Vector3().crossVectors(walkDir, walkUpV).normalize();
+  let ang=-dy*sens;
+  const cur=Math.acos(Math.max(-1,Math.min(1, walkDir.dot(walkUpV)))); // angle from up
+  const lim=0.12;
+  ang=Math.max(-(Math.PI-lim-cur), Math.min(cur-lim, ang)); // keep between poles
+  const qp=new THREE.Quaternion().setFromAxisAngle(right, ang);
+  walkDir.applyQuaternion(qp).normalize();
+  cam.up.copy(walkUpV);
+  cam.lookAt(cam.position.clone().add(walkDir));
+}
+
+function walkLoop(now){
+  if(!walkMode){ walkRAF=null; return; }
+  if(!canWalk()){ walkRAF=requestAnimationFrame(walkLoop); return; }
+  const dt=Math.min((now-walkLast)/1000, 0.05); walkLast=now;
+  const cam=viewer.camera, ctr=viewer.controls;
+  // movement basis (walk on the plane perpendicular to scene-up)
+  const fwd=walkDir.clone().addScaledVector(walkUpV, -walkDir.dot(walkUpV));
+  if(fwd.lengthSq()<1e-6) fwd.copy(walkDir); fwd.normalize();
+  const right=new THREE.Vector3().crossVectors(fwd, walkUpV).normalize();
+  let mF=0, mR=0, mU=0;
+  if(walkKeys['w']||walkKeys['arrowup']) mF+=1;
+  if(walkKeys['s']||walkKeys['arrowdown']) mF-=1;
+  if(walkKeys['d']||walkKeys['arrowright']) mR+=1;
+  if(walkKeys['a']||walkKeys['arrowleft']) mR-=1;
+  if(walkKeys['e']||walkKeys[' ']) mU+=1;
+  if(walkKeys['q']||walkKeys['shift']) mU-=1;
+  mF+=(-walkJoyS.dy); mR+=(walkJoyS.dx); mU+=walkVert;
+  const boost=(walkKeys['shift']&&!walkKeys['q'])?1:1;
+  const step=walkSpeed*dt*1.6*boost;
+  if(mF||mR||mU){
+    cam.position.addScaledVector(fwd, mF*step);
+    cam.position.addScaledVector(right, mR*step);
+    cam.position.addScaledVector(walkUpV, mU*step);
+    cam.up.copy(walkUpV);
+    cam.lookAt(cam.position.clone().add(walkDir));
+    ctr.target.copy(cam.position).addScaledVector(walkDir, Math.max(walkSpeed,1));
+  }
+  walkRAF=requestAnimationFrame(walkLoop);
+}
+
+// look: drag anywhere on the viewer (HUD passes pointer events through except joystick/buttons)
+host.addEventListener('pointerdown',e=>{ if(!walkMode) return; walkLook.on=true; walkLook.id=e.pointerId; walkLook.x=e.clientX; walkLook.y=e.clientY; });
+window.addEventListener('pointermove',e=>{ if(!walkMode||!walkLook.on||e.pointerId!==walkLook.id) return; const dx=e.clientX-walkLook.x, dy=e.clientY-walkLook.y; walkLook.x=e.clientX; walkLook.y=e.clientY; applyLook(dx,dy); });
+window.addEventListener('pointerup',e=>{ if(e.pointerId===walkLook.id){ walkLook.on=false; walkLook.id=null; } });
+window.addEventListener('pointercancel',()=>{ walkLook.on=false; walkLook.id=null; });
+
+// joystick
+function setNub(nx,ny){ const n=$('walkNub'); if(!n) return; const r=40; n.style.transform=`translate(${nx*r}px, ${ny*r}px)`; }
+(function joystick(){
+  const joy=$('walkJoy'); if(!joy) return;
+  function rel(e){ const r=joy.getBoundingClientRect(); let x=(e.clientX-(r.left+r.width/2))/(r.width/2); let y=(e.clientY-(r.top+r.height/2))/(r.height/2); const m=Math.hypot(x,y); if(m>1){ x/=m; y/=m; } return [x,y]; }
+  joy.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); walkJoyS.on=true; walkJoyS.id=e.pointerId; joy.setPointerCapture(e.pointerId); const[x,y]=rel(e); walkJoyS.dx=x; walkJoyS.dy=y; setNub(x,y); });
+  joy.addEventListener('pointermove',e=>{ if(!walkJoyS.on||e.pointerId!==walkJoyS.id) return; e.stopPropagation(); const[x,y]=rel(e); walkJoyS.dx=x; walkJoyS.dy=y; setNub(x,y); });
+  const end=e=>{ if(e.pointerId!==walkJoyS.id) return; walkJoyS.on=false; walkJoyS.dx=walkJoyS.dy=0; setNub(0,0); };
+  joy.addEventListener('pointerup',end); joy.addEventListener('pointercancel',end);
+})();
+
+// vertical (up/down) buttons — hold to move along scene-up
+function holdBtn(id,val){ const b=$(id); if(!b) return; const on=e=>{ e.preventDefault(); e.stopPropagation(); walkVert=val; }; const off=()=>{ walkVert=0; };
+  b.addEventListener('pointerdown',on); b.addEventListener('pointerup',off); b.addEventListener('pointerleave',off); b.addEventListener('pointercancel',off); }
+holdBtn('walkUp',1); holdBtn('walkDown',-1);
+
+// keyboard
+window.addEventListener('keydown',e=>{ if(!walkMode) return; const k=e.key.toLowerCase(); if(['w','a','s','d','q','e',' ','shift','arrowup','arrowdown','arrowleft','arrowright'].includes(k)){ walkKeys[k]=true; e.preventDefault(); } });
+window.addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); delete walkKeys[k]; });
+
+$('pillWalk') && $('pillWalk').addEventListener('click', toggleWalk);
 
 /* ---- collapsible sections (tap a section title to fold/unfold) ---- */
 (function makeCollapsible(){
