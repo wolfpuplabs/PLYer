@@ -316,6 +316,7 @@
             <button class="chip on" id="cmTranslate">⤧ Move</button>
             <button class="chip" id="cmRotate">⟳ Rotate</button>
             <button class="chip" id="cmScale">⤢ Scale</button>
+            <button class="chip on" id="cmGrid">▦ Grid</button>
           </div>
           <div id="composeList" class="compose-list"></div>
           <div id="composeUsdz" class="hint" style="color:var(--accent)"></div>
@@ -3087,12 +3088,15 @@ async function startMeshMode(){
   const key=new THREE.DirectionalLight(0xffffff,2.0); key.position.set(3,5,4); scene.add(key);
   scene.add(new THREE.AmbientLight(0xffffff,0.45));
   const group=new THREE.Group(); scene.add(group);
+  const grid=new THREE.GridHelper(10, 20, 0xc879ff, 0x2a2f3a);
+  grid.material.transparent=true; grid.material.opacity=0.5;
+  scene.add(grid);
   const gizmo=new deps.TransformControls(camera, renderer.domElement);
   gizmo.setSpace('local'); gizmo.size=0.9;
   scene.add(gizmo);
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
-  mesh={renderer,scene,camera,controls,group,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0};
+  mesh={renderer,scene,camera,controls,group,grid,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0,gridOn:true};
   gizmo.addEventListener('dragging-changed', e=>{
     controls.enabled=!e.value;
     if(e.value){ gizmoBefore = (typeof snapTRS==='function')?snapTRS(mesh&&mesh.selected):null; }
@@ -3120,6 +3124,7 @@ function frameMesh(){
   cam.position.copy(c).addScaledVector(dir,dist);
   cam.near=Math.max(dist/500,0.001); cam.far=dist*500; cam.updateProjectionMatrix();
   mesh.controls.target.copy(c); mesh.controls.update();
+  if(mesh.grid){ const footprint=Math.max(size.x,size.z,radius*0.5); mesh.grid.scale.setScalar(Math.max(footprint*2.4/10, 0.02)); mesh.grid.position.set(c.x, box.min.y, c.z); }
 }
 
 let composeId=0;
@@ -3232,6 +3237,7 @@ $('cmTranslate') && $('cmTranslate').addEventListener('click',()=>setGizmoMode('
 $('cmRotate') && $('cmRotate').addEventListener('click',()=>setGizmoMode('rotate'));
 $('cmScale') && $('cmScale').addEventListener('click',()=>setGizmoMode('scale'));
 $('cmAddMore') && $('cmAddMore').addEventListener('click',()=>$('viewInput').click());
+$('cmGrid') && $('cmGrid').addEventListener('click',()=>{ if(!mesh||!mesh.grid) return; mesh.gridOn=!mesh.gridOn; mesh.grid.visible=mesh.gridOn; $('cmGrid').classList.toggle('on', mesh.gridOn); });
 $('cmExport') && $('cmExport').addEventListener('click',async()=>{
   try{ showLoading('Exporting','baking one GLB'); const buf=await exportComposedGLB(); hideLoading();
     const blob=new Blob([buf],{type:'model/gltf-binary'}); const a=document.createElement('a');
@@ -3602,7 +3608,9 @@ function meshCleanRender(){
   if(!(meshActive&&mesh)) return;
   const keep=mesh.selected; let det=false;
   try{ if(mesh.gizmo && mesh.gizmo.object){ mesh.gizmo.detach(); det=true; } }catch(e){}
+  const gv = mesh.grid ? mesh.grid.visible : false; if(mesh.grid) mesh.grid.visible=false;   // keep grid out of snapshots
   try{ mesh.renderer.render(mesh.scene, mesh.camera); }catch(e){}
+  if(mesh.grid) mesh.grid.visible=gv;
   if(det && keep){ try{ mesh.gizmo.attach(keep); }catch(e){} }
 }
 function captureThumb(maxW){
