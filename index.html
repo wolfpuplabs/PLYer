@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Ply.er × image-blaster — generate &amp; view 3D</title>
+<title>Ply.er — splat viewer by PlayXR</title>
 
 <!-- three + GaussianSplats3D (MIT, © Mark Kellogg) loaded from CDN -->
 <script type="importmap">
@@ -172,6 +172,8 @@
   .walk-btn{width:54px;height:54px;border-radius:14px;background:rgba(15,18,25,.6);border:1px solid var(--border);color:var(--text);font-size:15px;cursor:pointer;backdrop-filter:blur(6px);-webkit-tap-highlight-color:transparent}
   .walk-btn:active{background:var(--accent);color:#1a0a26}
   .walk-tip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);font-family:var(--mono);font-size:11px;color:rgba(240,235,247,.6);background:rgba(15,18,25,.5);padding:6px 12px;border-radius:8px;backdrop-filter:blur(6px);white-space:nowrap;pointer-events:none}
+  .walk-toggle{position:absolute;left:50%;top:14px;transform:translateX(-50%);pointer-events:auto;font-family:var(--mono);font-size:12px;color:var(--text);background:rgba(15,18,25,.6);border:1px solid var(--border);padding:8px 14px;border-radius:9px;cursor:pointer;backdrop-filter:blur(6px);-webkit-tap-highlight-color:transparent}
+  .walk-toggle.off{opacity:.6}
   @media (max-width:1023px){ .walk-joy{width:112px;height:112px;left:18px;bottom:22px} .walk-nub{width:48px;height:48px;margin:-24px 0 0 -24px} }
   .pill{font-family:var(--mono);font-size:11.5px;color:var(--text);background:rgba(15,18,25,.78);border:1px solid var(--border);padding:7px 12px;border-radius:8px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s}
   .pill:hover{border-color:var(--accent-dim)}
@@ -276,7 +278,7 @@
       <button class="drawer-close" id="drawerClose" title="Hide panel">✕</button>
       <div class="eyebrow">PlayXR&nbsp;·&nbsp;Gaussian&nbsp;Splat&nbsp;Viewer</div>
       <h1>Ply<span class="dot">.</span>er</h1>
-      <p>Generate, view, compose, convert &amp; share — splats (.ply/.splat/.ksplat) &amp; meshes (.glb)</p>
+      <p>View, compose, convert &amp; share .ply / .splat / .ksplat</p>
     </div>
 
     <div class="tabs">
@@ -418,15 +420,14 @@
           <div class="group-title">Engine</div>
           <div class="field">
             <select id="genEngine">
-              <option value="fal" selected>fal.ai · TripoSplat — image → Gaussian splat (.ply)</option>
-              <option value="hunyuan">image-blaster · Hunyuan3D — image → textured mesh (.glb)</option>
+              <option value="fal" selected>fal.ai · TripoSplat (paid, fast, reliable)</option>
               <option value="trellis">TRELLIS · HF Space (free, ZeroGPU queue, experimental)</option>
             </select>
             <div class="hint" id="engineHint">TripoSplat returns a Gaussian .ply via your fal account.</div>
           </div>
         </div>
 
-        <div class="group" data-engine="fal hunyuan">
+        <div class="group" data-engine="fal">
           <div class="group-title">fal.ai access</div>
           <div class="field">
             <label class="lbl" for="proxyUrl">Proxy URL <span style="color:var(--faint)">· recommended for public sites</span></label>
@@ -471,34 +472,6 @@
           </div>
         </div>
 
-        <div class="group" data-engine="hunyuan" style="display:none">
-          <div class="group-title">Mesh · Hunyuan3D</div>
-          <div class="field">
-            <label class="lbl" for="hyFaces">Face count</label>
-            <select id="hyFaces">
-              <option value="50000" selected>50k — fast (image-blaster default)</option>
-              <option value="200000">200k — balanced</option>
-              <option value="500000">500k — high detail</option>
-            </select>
-          </div>
-          <div class="field">
-            <label class="lbl" for="hyType">Type</label>
-            <select id="hyType">
-              <option value="Normal" selected>Normal — textured</option>
-              <option value="LowPoly">LowPoly — reduced polys</option>
-              <option value="Geometry">Geometry — white, no texture</option>
-            </select>
-          </div>
-          <div class="field">
-            <label class="lbl" for="hyPbr">PBR materials</label>
-            <select id="hyPbr">
-              <option value="true" selected>On</option>
-              <option value="false">Off</option>
-            </select>
-            <div class="hint">Hunyuan3D returns a textured .glb — loaded straight into the mesh viewer.</div>
-          </div>
-        </div>
-
         <button class="btn" id="genRun" disabled>Generate 3D from image</button>
         <div class="status" id="genStatus">Drop a photo to begin.</div>
       </div>
@@ -510,7 +483,7 @@
     </div>
     <div class="footnote">
       <b>Ply.er</b> by PlayXR — local-first: viewing &amp; converting happen in your browser. Files are only uploaded when you tap <b>☁ Link</b> to share.<br>
-      Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a>, image→mesh via <a href="https://github.com/neilsonnn/image-blaster" target="_blank" rel="noopener">image-blaster</a>'s Hunyuan3D engine (fal.ai), or TRELLIS via a <a href="https://huggingface.co/spaces/trellis-community/TRELLIS" target="_blank" rel="noopener">Hugging Face Space</a> (experimental).
+      Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a>, or TRELLIS via a <a href="https://huggingface.co/spaces/trellis-community/TRELLIS" target="_blank" rel="noopener">Hugging Face Space</a> (experimental).
     </div>
   </aside>
 
@@ -531,6 +504,7 @@
     <button class="ar-dock" id="pillAR" style="display:none">⛶ View in AR</button>
     <!-- walk-mode HUD -->
     <div class="walk-hud" id="walkHud" style="display:none">
+      <button class="walk-toggle" id="walkColl">🧱 Collision: On</button>
       <div class="walk-joy" id="walkJoy"><div class="walk-nub" id="walkNub"></div></div>
       <div class="walk-vert">
         <button class="walk-btn" id="walkUp">▲</button>
@@ -3204,7 +3178,7 @@ async function rebuild(){
   stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
   $('pillWalk').style.display = arPrep ? 'none' : '';
   if(arPrep && typeof exitWalk==='function') exitWalk();
-  if(walkMode && !arPrep && viewer && viewer.controls){ const ctr=viewer.controls; ctr.enabled=false; if(typeof ctr.update==='function' && !ctr._origUpdate){ ctr._origUpdate=ctr.update; ctr.update=function(){}; } walkLast=performance.now(); if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop); }
+  if(walkMode && !arPrep && viewer && viewer.controls){ const ctr=viewer.controls; ctr.enabled=false; if(typeof ctr.update==='function' && !ctr._origUpdate){ ctr._origUpdate=ctr.update; ctr.update=function(){}; } if(typeof buildWalkCollision==='function'){ buildWalkCollision(); refreshWalkEye(); } walkLast=performance.now(); if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop); }
   $('pillAR') && ($('pillAR').textContent = arPrep ? '✕ Exit AR' : '⛶ AR');
   arVisible();
 }
@@ -3930,19 +3904,15 @@ function glog(msg,cls){const s=document.createElement('span');s.className=cls||'
 function setGenStatus(msg,kind){const el=$('genStatus');el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
 function genReady(){
   const eng=$('genEngine').value;
-  const have = (eng==='fal'||eng==='hunyuan') ? ($('proxyUrl').value.trim()||$('falKey').value.trim()) : true;
+  const have = eng==='fal' ? ($('proxyUrl').value.trim()||$('falKey').value.trim()) : true;
   $('genRun').disabled = !(genImageFile && have && !genBusy);
 }
 function applyEngine(){
   const eng=$('genEngine').value;
-  document.querySelectorAll('#mode-generate [data-engine]').forEach(el=>{
-    const list=(el.dataset.engine||'').split(/\s+/);
-    el.style.display=(list.indexOf(eng)>=0)?'':'none';
-  });
-  $('engineHint').textContent =
-    eng==='fal' ? 'TripoSplat returns a Gaussian .ply via your fal account.' :
-    eng==='hunyuan' ? 'image-blaster\u2019s mesh engine: Hunyuan3D returns a textured .glb via your fal account.' :
-    'TRELLIS runs free on a shared GPU (queued, slow). An HF token is recommended.';
+  document.querySelectorAll('#mode-generate [data-engine]').forEach(el=>{ el.style.display=(el.dataset.engine===eng)?'':'none'; });
+  $('engineHint').textContent = eng==='fal'
+    ? 'TripoSplat returns a Gaussian .ply via your fal account.'
+    : 'TRELLIS runs free on a shared GPU (queued, slow). An HF token is recommended.';
   try{localStorage.setItem(ENGINE_STORE,eng);}catch(e){}
   genReady();
 }
@@ -4083,118 +4053,8 @@ async function generateTrellis(){
   }
 }
 
-// generic finder for mesh/model URLs in a fal response
-function findModelUrl(data, exts){
-  const re=new RegExp('\\.('+exts.join('|')+')(\\?|$)','i');
-  const out=[], seen=[];
-  const rec=(v)=>{
-    if(v==null) return;
-    if(typeof v==='string'){ if(/^https?:\/\//i.test(v)&&re.test(v)) out.push(v); return; }
-    if(typeof v==='object'){ if(seen.indexOf(v)>=0) return; seen.push(v);
-      if(typeof v.url==='string'&&re.test(v.url)) out.push(v.url);
-      for(const k in v){ try{ rec(v[k]); }catch(e){} } }
-  };
-  rec(data); return out[0]||null;
-}
-
-/* =====================================================
-   GENERATE — image → 3D mesh via fal.ai (image-blaster's Hunyuan3D)
-   ===================================================== */
-async function generateHunyuan(){
-  const proxy=$('proxyUrl').value.trim().replace(/\/+$/,'');
-  const key=$('falKey').value.trim();
-  if(!genImageFile||(!proxy&&!key)) return;
-  genBusy=true; genReady(); $('genRun').textContent='Generating…';
-  setGenStatus('Generating mesh…','warn');
-
-  const base = proxy || 'https://queue.fal.run';
-  const headers = proxy ? {'Content-Type':'application/json'} : {'Authorization':'Key '+key,'Content-Type':'application/json'};
-  try{
-    glog(proxy?'using proxy '+proxy:'calling fal.ai directly');
-    glog('preparing image…');
-    const dataUrl=await imageToDataURL(genImageFile,1024);
-    const gtype=$('hyType').value;
-    const input={
-      input_image_url:dataUrl,
-      generate_type:gtype,
-      enable_pbr:$('hyPbr').value==='true',
-      face_count:parseInt($('hyFaces').value,10)
-    };
-    if(gtype==='LowPoly') input.polygon_type='triangle';
-    glog('submitting · hunyuan3d-v3/image-to-3d …');
-    const sub=await fetch(base+'/fal-ai/hunyuan3d-v3/image-to-3d',{method:'POST',headers,body:JSON.stringify(input)});
-    if(!sub.ok){
-      const txt=await sub.text(); let detail=txt;
-      try{ const j=JSON.parse(txt); detail=j.detail||j.message||txt; }catch(e){}
-      const e=new Error(String(detail).slice(0,200)); e.httpStatus=sub.status; throw e;
-    }
-    const subJson=await sub.json();
-    const statusUrl=subJson.status_url, responseUrl=subJson.response_url;
-    glog('queued · request '+(subJson.request_id||'').slice(0,8),'a');
-
-    // poll
-    const t0=Date.now(); let done=false, lastStatus='';
-    while(!done){
-      if(Date.now()-t0>8*60*1000) throw new Error('timed out after 8 min');
-      await sleep(3000);
-      const st=await fetch(statusUrl,{headers});
-      if(!st.ok){ glog('status check '+st.status+'…','w'); continue; }
-      const sj=await st.json();
-      if(sj.status!==lastStatus){
-        lastStatus=sj.status;
-        const secs=((Date.now()-t0)/1000).toFixed(0);
-        if(sj.status==='IN_QUEUE') glog('in queue'+(sj.queue_position!=null?' (pos '+sj.queue_position+')':'')+' · '+secs+'s');
-        else if(sj.status==='IN_PROGRESS') glog('meshing… · '+secs+'s','a');
-      }
-      if(sj.status==='COMPLETED') done=true;
-    }
-
-    glog('fetching result…');
-    const res=await fetch(responseUrl,{headers});
-    if(!res.ok) throw new Error('result fetch failed ('+res.status+')');
-    const data=await res.json();
-    const fileUrl=findModelUrl(data,['glb','gltf']);
-    if(!fileUrl) throw new Error('no .glb model in response');
-
-    // download the generated mesh and load it into the viewer
-    glog('downloading mesh…');
-    let buf;
-    try{
-      const fileRes=await fetch(fileUrl);
-      if(!fileRes.ok) throw new Error('download '+fileRes.status);
-      buf=await fileRes.arrayBuffer();
-    }catch(dlErr){
-      glog('couldn\u2019t fetch the file directly ('+dlErr.message+').','w');
-      glog('open it here, then drop it into the View tab:','a');
-      glog(fileUrl);
-      setGenStatus('Generated — download link in the log.','warn');
-      genBusy=false; $('genRun').textContent='Generate 3D from image'; genReady();
-      return;
-    }
-
-    const stem=(genImageFile.name.replace(/\.[^.]+$/,'')||'generated');
-    const outName=stem+'.glb';
-    glog('loading mesh into viewer · '+fmtBytes(buf.byteLength),'g');
-    activateTab('view');
-    await loadMeshFromArrayBuffer(buf, outName);
-    setGenStatus('Done — \u201c'+outName+'\u201d loaded in the viewer.','ok');
-  }catch(err){
-    console.error(err);
-    const m=(err&&err.message)?err.message:String(err);
-    glog('error: '+m,'e');
-    let status='Generation failed — see log.';
-    if(/lock|exhaust|balance|credit/i.test(m)) status='fal balance empty — top up at fal.ai/dashboard/billing.';
-    else if(err.httpStatus===401||err.httpStatus===403||/unauthor|forbidden|invalid.*key|api key/i.test(m)) status='Key rejected — check your fal API key.';
-    else if(/Failed to fetch|NetworkError|CORS/i.test(m)) status='Network/CORS issue — check connection.';
-    setGenStatus(status,'err');
-  }finally{
-    genBusy=false; $('genRun').textContent='Generate 3D from image'; genReady();
-  }
-}
-
 $('genRun').addEventListener('click',async()=>{
   if($('genEngine').value==='trellis'){ generateTrellis(); return; }
-  if($('genEngine').value==='hunyuan'){ generateHunyuan(); return; }
   const proxy=$('proxyUrl').value.trim().replace(/\/+$/,'');
   const key=$('falKey').value.trim();
   if(!genImageFile||(!proxy&&!key)) return;
@@ -4305,8 +4165,70 @@ let walkUpV=new THREE.Vector3(0,1,0);
 const walkLook={on:false,id:null,x:0,y:0};
 const walkJoyS={on:false,id:null,dx:0,dy:0};
 let walkVert=0; // -1 down, +1 up (held buttons)
+let walkCollide=true;            // collision on by default
+let walkColl=null;               // collision grid built from splat centers
+let walkEye=1;                   // camera height above floor (scene units)
 
 function canWalk(){ return viewerActive && !meshActive && viewer && viewer.camera && viewer.controls; }
+
+// Build an approximate collision proxy from the splat point cloud:
+//  - a ground grid (perpendicular to the scene-up axis)
+//  - per-cell floor height + vertical span → tall cells are treated as walls/solids
+function buildWalkCollision(){
+  walkColl=null;
+  const pts=sampleCenters(60000); if(!pts) return;
+  const U=walkUpV.clone().normalize();
+  let A=new THREE.Vector3(1,0,0); if(Math.abs(U.x)>0.9) A.set(0,1,0);
+  A=new THREE.Vector3().crossVectors(U,A).normalize();
+  const B=new THREE.Vector3().crossVectors(U,A).normalize();
+  const P=new THREE.Vector3();
+  let minA=Infinity,maxA=-Infinity,minB=Infinity,maxB=-Infinity,minH=Infinity,maxH=-Infinity;
+  for(let i=0;i<pts.length;i+=3){ P.set(pts[i],pts[i+1],pts[i+2]); const a=P.dot(A),b=P.dot(B),h=P.dot(U);
+    if(a<minA)minA=a; if(a>maxA)maxA=a; if(b<minB)minB=b; if(b>maxB)maxB=b; if(h<minH)minH=h; if(h>maxH)maxH=h; }
+  const span=Math.max(maxA-minA,maxB-minB,1e-3), totalH=Math.max(maxH-minH,1e-3);
+  const cell=span/120;
+  const fl=new Map(), hi=new Map(), cnt=new Map();
+  const key=(ia,ib)=>ia*100000+ib;
+  for(let i=0;i<pts.length;i+=3){ P.set(pts[i],pts[i+1],pts[i+2]); const a=P.dot(A),b=P.dot(B),h=P.dot(U);
+    const k=key(Math.floor((a-minA)/cell),Math.floor((b-minB)/cell));
+    const f=fl.get(k); if(f===undefined||h<f) fl.set(k,h);
+    const g=hi.get(k); if(g===undefined||h>g) hi.set(k,h);
+    cnt.set(k,(cnt.get(k)||0)+1);
+  }
+  const occ=new Set();
+  cnt.forEach((c,k)=>{ if(c>=4 && (hi.get(k)-fl.get(k))>totalH*0.20) occ.add(k); }); // tall+dense = solid
+  walkColl={U,A,B,cell,minA,minB,minH,maxH,totalH,fl,occ,key};
+}
+function collFloorAt(a,b){ if(!walkColl) return null; const {cell,minA,minB,fl,key}=walkColl;
+  const ia=Math.floor((a-minA)/cell), ib=Math.floor((b-minB)/cell); let best=null;
+  for(let da=-1;da<=1;da++)for(let db=-1;db<=1;db++){ const f=fl.get(key(ia+da,ib+db)); if(f!==undefined && (best===null||f<best)) best=f; }
+  return best;
+}
+function collSolid(a,b){ if(!walkColl) return false; const {cell,minA,minB,occ,key}=walkColl;
+  const ia=Math.floor((a-minA)/cell), ib=Math.floor((b-minB)/cell);
+  for(let da=-1;da<=1;da++)for(let db=-1;db<=1;db++){ if(occ.has(key(ia+da,ib+db))) return true; }
+  return false;
+}
+// move camera by world-space horizontal delta, blocking / sliding along walls
+function walkTryMove(cam,dvec){
+  if(!walkCollide||!walkColl){ cam.position.add(dvec); return; }
+  const A=walkColl.A,B=walkColl.B;
+  const at=p=>collSolid(p.dot(A),p.dot(B));
+  if(at(cam.position)){ cam.position.add(dvec); return; }   // already inside something → let them escape
+  const full=cam.position.clone().add(dvec);
+  if(!at(full)){ cam.position.copy(full); return; }
+  const dA=A.clone().multiplyScalar(dvec.dot(A)), pa=cam.position.clone().add(dA);
+  if(dA.lengthSq()>1e-9 && !at(pa)){ cam.position.copy(pa); return; }
+  const dB=B.clone().multiplyScalar(dvec.dot(B)), pb=cam.position.clone().add(dB);
+  if(dB.lengthSq()>1e-9 && !at(pb)){ cam.position.copy(pb); return; }
+  /* fully blocked */
+}
+function refreshWalkEye(){ // remember current standing height above the floor
+  if(!walkColl||!canWalk()) return;
+  const cam=viewer.camera, a=cam.position.dot(walkColl.A), b=cam.position.dot(walkColl.B);
+  const f=collFloorAt(a,b); const h=cam.position.dot(walkUpV);
+  walkEye=(f!=null)?Math.max(h-f, walkColl.totalH*0.04):walkColl.totalH*0.1;
+}
 
 function enterWalk(){
   if(!canWalk()) return;
@@ -4315,6 +4237,7 @@ function enterWalk(){
   walkUpV.copy(cam.up).normalize(); if(walkUpV.lengthSq()<1e-6) walkUpV.set(0,1,0);
   walkDir.copy(ctr.target).sub(cam.position); if(walkDir.lengthSq()<1e-6) walkDir.set(0,0,-1); walkDir.normalize();
   walkSpeed=Math.max(cam.position.distanceTo(ctr.target)*0.6, 0.4);
+  buildWalkCollision(); refreshWalkEye();
   ctr.enabled=false;
   if(typeof ctr.update==='function' && !ctr._origUpdate){ ctr._origUpdate=ctr.update; ctr.update=function(){}; }  // stop OrbitControls from re-aiming at target every frame
   $('walkHud').style.display='';
@@ -4372,10 +4295,19 @@ function walkLoop(now){
   mF+=(-walkJoyS.dy); mR+=(walkJoyS.dx); mU+=walkVert;
   const boost=(walkKeys['shift']&&!walkKeys['q'])?1:1;
   const step=walkSpeed*dt*1.6*boost;
-  if(mF||mR||mU){
-    cam.position.addScaledVector(fwd, mF*step);
-    cam.position.addScaledVector(right, mR*step);
-    cam.position.addScaledVector(walkUpV, mU*step);
+  let moved=false;
+  // horizontal movement (with wall collision / sliding)
+  const dvec=fwd.clone().multiplyScalar(mF*step).addScaledVector(right, mR*step);
+  if(dvec.lengthSq()>1e-12){ walkTryMove(cam, dvec); moved=true; }
+  // vertical / floor handling
+  if(walkCollide && walkColl){
+    if(mU){ walkEye=Math.max(walkColl.totalH*0.03, walkEye+mU*step); moved=true; }   // ▲▼ raises/lowers eye height
+    const f=collFloorAt(cam.position.dot(walkColl.A), cam.position.dot(walkColl.B));
+    if(f!=null){ const curH=cam.position.dot(walkUpV); cam.position.addScaledVector(walkUpV, (f+walkEye)-curH); moved=true; }
+  } else if(mU){
+    cam.position.addScaledVector(walkUpV, mU*step); moved=true;
+  }
+  if(moved){
     cam.up.copy(walkUpV);
     cam.lookAt(cam.position.clone().add(walkDir));
     ctr.target.copy(cam.position).addScaledVector(walkDir, Math.max(walkSpeed,1));
@@ -4410,6 +4342,13 @@ window.addEventListener('keydown',e=>{ if(!walkMode) return; const k=e.key.toLow
 window.addEventListener('keyup',e=>{ const k=e.key.toLowerCase(); delete walkKeys[k]; });
 
 $('pillWalk') && $('pillWalk').addEventListener('click', toggleWalk);
+$('walkColl') && $('walkColl').addEventListener('click',e=>{ e.stopPropagation();
+  walkCollide=!walkCollide;
+  $('walkColl').textContent='🧱 Collision: '+(walkCollide?'On':'Off');
+  $('walkColl').classList.toggle('off', !walkCollide);
+  $('walkTip').textContent = walkCollide ? 'Drag to look · joystick to move · ▲▼ height' : 'Free-fly · drag to look · joystick + ▲▼';
+  if(walkCollide){ if(!walkColl) buildWalkCollision(); refreshWalkEye(); }
+});
 
 /* ---- collapsible sections (tap a section title to fold/unfold) ---- */
 (function makeCollapsible(){
