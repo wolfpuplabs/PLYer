@@ -3175,7 +3175,7 @@ async function rebuild(){
   stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
   $('pillWalk').style.display = arPrep ? 'none' : '';
   if(arPrep && typeof exitWalk==='function') exitWalk();
-  if(walkMode && !arPrep && viewer && viewer.controls){ viewer.controls.enabled=false; walkLast=performance.now(); if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop); }
+  if(walkMode && !arPrep && viewer && viewer.controls){ const ctr=viewer.controls; ctr.enabled=false; if(typeof ctr.update==='function' && !ctr._origUpdate){ ctr._origUpdate=ctr.update; ctr.update=function(){}; } walkLast=performance.now(); if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop); }
   $('pillAR') && ($('pillAR').textContent = arPrep ? '✕ Exit AR' : '⛶ AR');
   arVisible();
 }
@@ -4173,6 +4173,7 @@ function enterWalk(){
   walkDir.copy(ctr.target).sub(cam.position); if(walkDir.lengthSq()<1e-6) walkDir.set(0,0,-1); walkDir.normalize();
   walkSpeed=Math.max(cam.position.distanceTo(ctr.target)*0.6, 0.4);
   ctr.enabled=false;
+  if(typeof ctr.update==='function' && !ctr._origUpdate){ ctr._origUpdate=ctr.update; ctr.update=function(){}; }  // stop OrbitControls from re-aiming at target every frame
   $('walkHud').style.display='';
   $('pillWalk').classList.add('on'); $('pillWalk').textContent='🚪 Exit walk';
   walkLast=performance.now();
@@ -4186,7 +4187,7 @@ function exitWalk(){
   walkJoyS.on=false; walkJoyS.dx=walkJoyS.dy=0; walkVert=0;
   for(const k in walkKeys) delete walkKeys[k];
   setNub(0,0);
-  if(canWalk()){ const cam=viewer.camera, ctr=viewer.controls; ctr.target.copy(cam.position).addScaledVector(walkDir, Math.max(walkSpeed,1)); ctr.enabled=true; ctr.update(); }
+  if(canWalk()){ const cam=viewer.camera, ctr=viewer.controls; if(ctr._origUpdate){ ctr.update=ctr._origUpdate; ctr._origUpdate=null; } ctr.target.copy(cam.position).addScaledVector(walkDir, Math.max(walkSpeed,1)); ctr.enabled=true; ctr.update(); }
 }
 function toggleWalk(){ walkMode?exitWalk():enterWalk(); }
 
