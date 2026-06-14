@@ -92,6 +92,7 @@
   .compose-actions{display:flex;gap:8px;flex-wrap:wrap}
   .usdz-x{cursor:pointer;color:var(--faint);font-family:var(--mono)}
   .usdz-x:hover{color:#ff7676}
+  .acct-hint{font-family:var(--mono);font-size:10.5px;color:var(--faint);padding:6px 2px 0;line-height:1.5}
   .group-title .count{color:var(--accent);letter-spacing:.05em}
   .field{display:flex;flex-direction:column;gap:6px}
   .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -305,7 +306,7 @@
           <summary class="loader-sum"><span class="ico">◈</span> Add splat / mesh</summary>
           <div class="loader-body" id="viewDrop">
             <span>Tap to choose · or drop files here</span>
-            <span class="fmt">.ply · .splat · .ksplat · .glb · .gltf · .usdz</span>
+            <span class="fmt">.ply · .splat · .ksplat · .glb · .gltf · .fbx · .usdz</span>
             <input type="file" id="viewInput" multiple hidden />
           </div>
         </details>
@@ -511,6 +512,7 @@
       <span class="acct-state" id="acctState">Not signed in</span>
       <button class="btn ghost sm" id="acctBtn" style="width:auto">Sign in</button>
     </div>
+    <div class="acct-hint" id="acctHint">Sign in to save shares to your library — otherwise links expire after 24h.</div>
     <div class="footnote">
       <b>Ply.er</b> by PlayXR — local-first: viewing &amp; converting happen in your browser. Files are only uploaded when you tap <b>☁ Link</b> to share.<br>
       Viewer/convert: <a href="https://github.com/mkkellogg/GaussianSplats3D" target="_blank" rel="noopener">GaussianSplats3D</a> (MIT). Generate: TripoSplat via <a href="https://fal.ai/models/tripo3d/triposplat" target="_blank" rel="noopener">fal.ai</a>, or TRELLIS via a <a href="https://huggingface.co/spaces/trellis-community/TRELLIS" target="_blank" rel="noopener">Hugging Face Space</a> (experimental).
@@ -3055,15 +3057,16 @@ const MESH_CDN='https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/';
 let meshDeps=null;
 async function loadMeshDeps(){
   if(meshDeps) return meshDeps;
-  const [gltf,orbit,draco,roomenv,tc,exp]=await Promise.all([
+  const [gltf,orbit,draco,roomenv,tc,exp,fbx]=await Promise.all([
     import(MESH_CDN+'loaders/GLTFLoader.js'),
     import(MESH_CDN+'controls/OrbitControls.js'),
     import(MESH_CDN+'loaders/DRACOLoader.js'),
     import(MESH_CDN+'environments/RoomEnvironment.js'),
     import(MESH_CDN+'controls/TransformControls.js'),
-    import(MESH_CDN+'exporters/GLTFExporter.js')
+    import(MESH_CDN+'exporters/GLTFExporter.js'),
+    import(MESH_CDN+'loaders/FBXLoader.js')
   ]);
-  meshDeps={ GLTFLoader:gltf.GLTFLoader, OrbitControls:orbit.OrbitControls, DRACOLoader:draco.DRACOLoader, RoomEnvironment:roomenv.RoomEnvironment, TransformControls:tc.TransformControls, GLTFExporter:exp.GLTFExporter };
+  meshDeps={ GLTFLoader:gltf.GLTFLoader, OrbitControls:orbit.OrbitControls, DRACOLoader:draco.DRACOLoader, RoomEnvironment:roomenv.RoomEnvironment, TransformControls:tc.TransformControls, GLTFExporter:exp.GLTFExporter, FBXLoader:fbx.FBXLoader };
   return meshDeps;
 }
 
@@ -3130,21 +3133,30 @@ function frameMesh(){
 
 let composeId=0;
 async function addMeshObject(buf, name){
-  const m=mesh;
-  const loader=new m.deps.GLTFLoader();
-  try{ const d=new m.deps.DRACOLoader(); d.setDecoderPath(MESH_CDN+'libs/draco/'); loader.setDRACOLoader(d); }catch(e){}
-  const gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
-  const obj=gltf.scene||(gltf.scenes&&gltf.scenes[0]);
+  const m=mesh; let obj, clips;
+  if(isFbxName(name)){
+    const fbx=new m.deps.FBXLoader();
+    obj=fbx.parse(buf, '');                          // FBXLoader.parse is synchronous → Group
+    if(!obj) throw new Error('could not parse FBX');
+    clips=(obj.animations&&obj.animations.length)?obj.animations.slice():[];
+    // FBX is usually in centimetres → scale down so it sits sensibly next to GLB (metres)
+    const box=new THREE.Box3().setFromObject(obj); const sz=new THREE.Vector3(); if(!box.isEmpty()){ box.getSize(sz); if(Math.max(sz.x,sz.y,sz.z)>50) obj.scale.multiplyScalar(0.01); }
+  } else {
+    const loader=new m.deps.GLTFLoader();
+    try{ const d=new m.deps.DRACOLoader(); d.setDecoderPath(MESH_CDN+'libs/draco/'); loader.setDRACOLoader(d); }catch(e){}
+    const gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
+    obj=gltf.scene||(gltf.scenes&&gltf.scenes[0]);
+    clips=(gltf.animations&&gltf.animations.length)?gltf.animations.slice():[];
+  }
   if(!obj) throw new Error('no scene in file');
   obj.name = obj.name || (name||('object '+(composeId+1)));
   m.group.add(obj);
-  const clips=(gltf.animations&&gltf.animations.length)?gltf.animations.slice():[];
   if(clips.length){
     const mx=new THREE.AnimationMixer(obj);
     clips.forEach(clip=>mx.clipAction(clip).play());
     m.mixers.push(mx); m.clipCount=(m.clipCount||0)+clips.length;
   }
-  const rec={ id:++composeId, name:(name||obj.name||('object '+composeId)).replace(/\.(glb|gltf)$/i,''), node:obj, clips };
+  const rec={ id:++composeId, name:(name||obj.name||('object '+composeId)).replace(/\.(glb|gltf|fbx)$/i,''), node:obj, clips };
   m.objects.push(rec);
   return rec;
 }
@@ -3285,7 +3297,8 @@ window.addEventListener('keydown',e=>{
   else if((e.metaKey||e.ctrlKey)&&(e.key==='y'||e.key==='Y')){ e.preventDefault(); composeRedoAct(); }
 });
 
-function isMeshName(n){ return /\.(glb|gltf)$/i.test(n||''); }
+function isMeshName(n){ return /\.(glb|gltf|fbx)$/i.test(n||''); }
+function isFbxName(n){ return /\.fbx$/i.test(n||''); }
 function isUsdzName(n){ return /\.usdz$/i.test(n||''); }
 async function attachUsdz(file){
   if(!(meshActive && mesh)){ await startMeshMode(); frameMesh(); }
@@ -3670,8 +3683,8 @@ function saveSession(s){ session=s; try{ s?localStorage.setItem('splatstudio.ses
 function loggedIn(){ return !!(session && session.access_token); }
 function authHeaders(){ return loggedIn() ? {apikey:SUPA_KEY, Authorization:'Bearer '+session.access_token} : supaHeaders; }
 function refreshAcctUI(){
-  if(loggedIn()){ $('acctState').textContent=session.email||'Signed in'; $('acctBtn').textContent='Logout'; }
-  else { $('acctState').textContent='Not signed in'; $('acctBtn').textContent='Sign in'; }
+  if(loggedIn()){ $('acctState').textContent=session.email||'Signed in'; $('acctBtn').textContent='Logout'; const h=$('acctHint'); if(h) h.textContent='Signed in — your shares are saved to your library and stay live.'; }
+  else { $('acctState').textContent='Not signed in'; $('acctBtn').textContent='Sign in'; const h=$('acctHint'); if(h) h.textContent='Sign in to save shares to your library — otherwise links expire after 24h.'; }
 }
 function applyAuthData(d){
   if(!d || !d.access_token) return false;
