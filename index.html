@@ -382,7 +382,7 @@
           </div>
         </div>
 
-        <button class="btn ghost sm" id="applyTransforms" disabled>Apply transforms</button>
+        <button class="btn ghost sm" id="applyTransforms" disabled>Apply &amp; Save</button>
 
         <div class="group">
           <div class="group-title"><span>Camera bookmarks</span></div>
@@ -3560,7 +3560,17 @@ function renderLayerList(){
   });
 }
 
-$('applyTransforms').addEventListener('click',async()=>{ await rebuild(); setViewStatus('Transforms applied.','ok'); });
+$('applyTransforms').addEventListener('click',async()=>{
+  await rebuild();
+  const vis=layers.filter(l=>!l.hidden && l.buffer);
+  if(!vis.length){ setViewStatus('Transforms applied (no visible layer to save).','ok'); return; }
+  let n=0;
+  for(const l of vis){
+    try{ GaussianSplats3D.KSplatLoader.downloadFile(l.buffer, l.name.replace(/\.[^.]+$/,'')+'.ksplat'); n++; }
+    catch(e){ console.error(e); }
+  }
+  setViewStatus('Transforms applied · saved '+n+' .ksplat file'+(n>1?'s':''),'ok');
+});
 $('viewUp').addEventListener('change',async()=>{ syncUpChips(); if(layers.length){ await rebuild(); frameScene(); } });
 
 function syncUpChips(){
