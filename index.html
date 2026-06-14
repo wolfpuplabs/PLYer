@@ -609,6 +609,7 @@
     </div>
     <button id="openEditor">≡ Controls</button>
     <div class="stage-bar" id="stageBar">
+      <div class="pill" id="pillNew">✦ New</div>
       <div class="pill" id="pillWalk" style="display:none">🚶 Walk</div>
       <div class="pill" id="pillDownload" style="display:none">⤓ 3D</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
@@ -3690,6 +3691,30 @@ async function downloadModel(){
   }catch(e){ hideLoading(); setViewStatus('Download failed: '+(e&&e.message||'unknown'),'err'); }
 }
 $('pillDownload') && $('pillDownload').addEventListener('click', downloadModel);
+
+async function newScene(){
+  try{
+    document.body.classList.remove('shared','shared-open');
+    try{ disposeMeshViewer(); }catch(e){}              // clear any mesh/compose
+    try{ await disposeViewer(); }catch(e){}            // clear any splat scene
+    layers=[]; if(typeof renderLayerList==='function') renderLayerList();
+    host.innerHTML='';
+    stageBar.classList.remove('show');
+    ['pillWalk','pillDownload','pillFrame','pillSave'].forEach(id=>{ const e=$(id); if(e&&id!=='pillSave') e.style.display='none'; });
+    const cg=$('composeGroup'); if(cg) cg.style.display='none';
+    emptyState.style.display='flex'; ambient.style.display='';
+    const dl=$('shareAllowDl'); if(dl) dl.checked=false;
+    const si=$('sharedInfo'); if(si) si.style.display='none';
+    if(typeof updateSaveShare==='function') updateSaveShare();
+    if(typeof arVisible==='function') arVisible();
+    setViewStatus('New scene — drop a splat or mesh to begin.','ok');
+    try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){}
+  }catch(e){ setViewStatus('Could not reset stage: '+(e&&e.message||'unknown'),'err'); }
+}
+$('pillNew') && $('pillNew').addEventListener('click', ()=>{
+  if(sceneActive()){ if(!confirm('Start a new empty scene? This clears the current stage (saved library assets are kept).')) return; }
+  newScene();
+});
 $('viewUp').addEventListener('change',async()=>{ syncUpChips(); if(layers.length){ await rebuild(); frameScene(); } });
 
 function syncUpChips(){
