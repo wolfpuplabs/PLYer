@@ -243,6 +243,15 @@
   .act-tile.primary .ti{background:rgba(255,255,255,.22);border-color:transparent}
   .act-tile.primary .tc{color:rgba(24,10,38,.68)}
   .act-tile.primary:hover{filter:brightness(1.04);transform:translateY(-1px)}
+  .dl-opt{display:flex;align-items:center;gap:9px;margin:2px 2px 0;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;user-select:none}
+  .dl-opt input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+  /* shared viewer mode — clean, no control panel */
+  #openEditor{position:absolute;top:14px;left:14px;z-index:16;display:none;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;line-height:1;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);height:34px;padding:0 13px;border-radius:9px;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);cursor:pointer;transition:.15s}
+  #openEditor:hover{border-color:var(--accent-dim)}
+  body.shared #openEditor{display:flex}
+  body.shared:not(.shared-open) .sidebar{display:none!important}
+  body.shared:not(.shared-open) .panel-toggle,body.shared:not(.shared-open) .drawer-close{display:none!important}
+  body.shared:not(.shared-open) .stage{order:0;position:absolute;inset:0;height:100dvh;min-height:0;width:100%}
   .panel-toggle{position:absolute;top:14px;left:14px;z-index:13;font-family:var(--mono);font-size:12px;line-height:1;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);height:34px;padding:0 13px;border-radius:9px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s;display:none;align-items:center;justify-content:center;gap:7px}
   .panel-toggle:hover{border-color:var(--accent-dim)}
   /* model-viewer AR overlay */
@@ -554,6 +563,7 @@
         <span class="ti">💾</span>
         <span class="tx"><span class="tt">Save to Library</span><span class="tc">Permanent · kept in your account</span></span>
       </button>
+      <label class="dl-opt" id="dlOpt" style="display:none"><input type="checkbox" id="shareAllowDl"> Allow viewers to download this asset</label>
     </div>
     <div class="library" id="libSection" style="display:none">
       <div class="lib-head">
@@ -583,6 +593,7 @@
       <div class="load-text" id="loadText">Loading</div>
       <div class="load-sub"><span id="loadSub"></span><span class="dots"></span></div>
     </div>
+    <button id="openEditor">≡ Controls</button>
     <div class="stage-bar" id="stageBar">
       <div class="pill" id="pillWalk" style="display:none">🚶 Walk</div>
       <div class="pill" id="pillDownload" style="display:none">⤓ 3D</div>
@@ -3626,6 +3637,7 @@ function updateSaveShare(){
   const ok = (viewerActive && !meshActive && layers.length) || (meshActive && mesh && ((mesh.objects&&mesh.objects.length) || mesh.sourceBytes || mesh.usdzBytes));
   if(b){ b.style.display = ok ? '' : 'none'; b.classList.toggle('primary', ok && !loggedIn()); }
   if(sl) sl.style.display = (ok && loggedIn()) ? '' : 'none';   // permanent save only for signed-in users
+  const dl=$('dlOpt'); if(dl) dl.style.display = ok ? 'flex' : 'none';
 }
 async function prepShareScene(label){
   if(meshActive && mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); return true; }
@@ -4012,7 +4024,8 @@ async function cloudShare(opts){
     const xfLayer = art.layer ? {pos:art.layer.pos, rot:art.layer.rot, scale:art.layer.scale, alpha:art.layer.alpha} : null;
     const meta = { up: $('viewUp').value, xf: xfLayer, cam: captureCam(),
                    thumb: (captureThumb(256)||null), bytes: bytes.byteLength,
-                   count: (art.layer&&art.layer.count)||null, kind: art.kind||ext };
+                   count: (art.layer&&art.layer.count)||null, kind: art.kind||ext,
+                   allowDownload: !!($('shareAllowDl')&&$('shareAllowDl').checked) };
     const row={ name:art.name, path, format:ext, url:publicUrl, meta };
     if(loggedIn() && !ephemeral) row.expires_at=null;            // keep permanently for signed-in users (unless ephemeral)
     try{
@@ -4119,20 +4132,34 @@ async function loadFromUrl(url, fmt, name, meta){
   }catch(e){ hideLoading(); console.error(e); setViewStatus('Couldn\u2019t load shared scene: '+(e&&e.message?e.message:'error'),'err'); }
 }
 
+function applySharedChrome(allowDownload){
+  const sv=$('pillSave'); if(sv) sv.style.display='none';            // hide editing-only control for viewers
+  const dl=$('pillDownload'); if(dl) dl.style.display = allowDownload ? '' : 'none';
+}
+$('openEditor') && $('openEditor').addEventListener('click', ()=>{
+  const open=document.body.classList.toggle('shared-open');
+  $('openEditor').textContent = open ? '✕ Hide' : '≡ Controls';
+  const sv=$('pillSave'); if(sv) sv.style.display = open ? '' : 'none';   // show Save-view once editing
+  setTimeout(()=>{ try{ window.dispatchEvent(new Event('resize')); }catch(e){} }, 60);
+});
+
 async function loadFromQuery(){
   const q=new URLSearchParams(location.search);
   const share=q.get('share'), u=q.get('u'), f=q.get('f');
+  if(share || u) document.body.classList.add('shared');             // clean viewer layout for shared links
   if(share){
     showLoading('Opening shared scene','');
     try{
       const r=await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(share)}&select=url,format,name,meta`,{headers:supaHeaders});
       if(!r.ok) throw new Error('lookup '+r.status);
       const rows=await r.json();
-      if(rows&&rows[0]){ await loadFromUrl(rows[0].url, rows[0].format, rows[0].name, rows[0].meta); }
+      if(rows&&rows[0]){ await loadFromUrl(rows[0].url, rows[0].format, rows[0].name, rows[0].meta);
+        applySharedChrome(!!(rows[0].meta && rows[0].meta.allowDownload)); }
       else { hideLoading(); setViewStatus('Shared scene not found.','err'); }
     }catch(e){ hideLoading(); setViewStatus('Share lookup failed: '+(e&&e.message?e.message:'error'),'err'); }
   } else if(u){
     await loadFromUrl(u, f||'', null, q.get('up')?{up:q.get('up')}:null);
+    applySharedChrome(false);                                        // direct-URL links: no download by default
   }
 }
 
