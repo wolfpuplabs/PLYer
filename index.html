@@ -82,7 +82,7 @@
   .group-content{display:grid;grid-template-rows:1fr;transition:grid-template-rows .26s ease}
   .group.collapsed .group-content{grid-template-rows:0fr}
   .group-inner{overflow:hidden;min-height:0;display:flex;flex-direction:column;gap:13px;padding-top:13px}
-  .compose-modes{display:flex;gap:8px}
+  .compose-modes{display:flex;flex-wrap:wrap;gap:8px}
   .compose-list{display:flex;flex-direction:column;gap:6px}
   .compose-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);cursor:pointer;font-size:12.5px;transition:.12s}
   .compose-row.sel{border-color:var(--accent);background:rgba(200,121,255,.08)}
@@ -3344,7 +3344,7 @@ function renderComposeList(){
 }
 function selectComposeObject(id){
   if(!mesh) return; const rec=mesh.objects.find(o=>o.id===id); if(!rec) return;
-  mesh.selected=rec.node; try{ mesh.gizmo.attach(rec.node); }catch(e){}
+  mesh.selected=rec.node; if(!mesh.gizmoHidden){ try{ mesh.gizmo.attach(rec.node); }catch(e){} }
   renderComposeList();
 }
 function deleteComposeObject(id){
@@ -3389,7 +3389,15 @@ $('cmTranslate') && $('cmTranslate').addEventListener('click',()=>setGizmoMode('
 $('cmRotate') && $('cmRotate').addEventListener('click',()=>setGizmoMode('rotate'));
 $('cmScale') && $('cmScale').addEventListener('click',()=>setGizmoMode('scale'));
 $('cmAddMore') && $('cmAddMore').addEventListener('click',()=>$('viewInput').click());
-$('cmGrid') && $('cmGrid').addEventListener('click',()=>{ if(!mesh||!mesh.grid) return; mesh.gridOn=!mesh.gridOn; mesh.grid.visible=mesh.gridOn; $('cmGrid').classList.toggle('on', mesh.gridOn); });
+$('cmGrid') && $('cmGrid').addEventListener('click',()=>{
+  if(!mesh) return;
+  mesh.gridOn=!mesh.gridOn;
+  if(mesh.grid) mesh.grid.visible=mesh.gridOn;
+  mesh.gizmoHidden=!mesh.gridOn;                                   // hide gizmo together with the grid (clean view)
+  if(mesh.gizmoHidden){ try{ mesh.gizmo.detach(); }catch(e){} }
+  else if(mesh.selected){ try{ mesh.gizmo.attach(mesh.selected); }catch(e){} }
+  $('cmGrid').classList.toggle('on', mesh.gridOn);
+});
 $('cmFloor') && $('cmFloor').addEventListener('click',()=>{ if(!mesh) return; mesh.floorSnap=!mesh.floorSnap; $('cmFloor').classList.toggle('on', mesh.floorSnap); setViewStatus(mesh.floorSnap?'Floor snap on — objects rest on the ground.':'Floor snap off — objects can go below ground.','ok'); });
 $('cmShare') && $('cmShare').addEventListener('click',async()=>{
   try{
