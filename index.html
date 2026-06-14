@@ -528,7 +528,6 @@
     </div>
     <div class="stage-bar" id="stageBar">
       <div class="pill" id="pillWalk" style="display:none">🚶 Walk</div>
-      <div class="pill" id="pillCloud" style="display:none">☁ Link</div>
       <div class="pill" id="pillDownload" style="display:none">⤓ 3D</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
@@ -3190,7 +3189,7 @@ async function loadMeshFromArrayBuffer(buf, name){
     selectComposeObject(rec.id);
     renderComposeList();
     hideLoading(); ambient.style.display='none';
-    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display=''; $('pillDownload').style.display='';
+    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillDownload').style.display='';
     if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none';
     if(typeof arVisible==='function') arVisible();
     setViewStatus((adding?'Added ':'Mesh loaded · ')+(rec.name||'model')+' · '+mesh.objects.length+' object'+(mesh.objects.length>1?'s':''),'ok');
@@ -3328,7 +3327,7 @@ async function attachUsdz(file){
   const buf=await file.arrayBuffer();
   mesh.usdzBytes=buf; mesh.usdzName=file.name||'model.usdz';
   emptyState.style.display='none'; ambient.style.display='none';
-  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display=''; $('pillDownload').style.display='';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillDownload').style.display='';
   if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none';
   renderComposeList(); if(typeof arVisible==='function') arVisible();
   setViewStatus('iOS-AR file attached: '+mesh.usdzName+' — animations will play in iOS Quick Look.'+(mesh.objects&&mesh.objects.length?'':' Add a .glb too for on-screen preview & Android AR.'),'ok');
@@ -3396,7 +3395,7 @@ async function rebuild(){
     if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
     hideLoading();
   }
-  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display=''; $('pillDownload').style.display='';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillDownload').style.display='';
   $('pillWalk').style.display = arPrep ? 'none' : '';
   if(arPrep && typeof exitWalk==='function') exitWalk();
   if(walkMode && !arPrep && viewer && viewer.controls){ const ctr=viewer.controls; ctr.enabled=false; if(typeof ctr.update==='function' && !ctr._origUpdate){ ctr._origUpdate=ctr.update; ctr.update=function(){}; } if(typeof buildWalkCollision==='function'){ buildWalkCollision(); refreshWalkEye(); } walkLast=performance.now(); if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop); }
@@ -3877,7 +3876,6 @@ async function cloudShare(opts){
     setViewStatus('Cloud share failed: '+msg,'err');
   }
 }
-$('pillCloud').addEventListener('click',cloudShare);
 
 let shareThumbUrl=null, shareSceneName='';
 function openShareModal(link, thumb, ephemeral){
