@@ -385,7 +385,6 @@
           </div>
         </div>
 
-        <button class="btn ghost sm" id="applyTransforms" disabled>Apply &amp; Save</button>
 
         <div class="group">
           <div class="group-title"><span>Camera bookmarks</span></div>
@@ -513,6 +512,7 @@
       </div>
     </div>
 
+    <button class="btn" id="saveShare" style="display:none">💾 Save &amp; Share</button>
     <div class="acct" id="acctRow">
       <span class="acct-state" id="acctState">Not signed in</span>
       <button class="btn ghost sm" id="acctBtn" style="width:auto">Sign in</button>
@@ -3518,7 +3518,7 @@ function renderLayerList(){
   const list=$('layerList'); list.innerHTML='';
   $('layerEmpty').style.display = layers.length?'none':'block';
   $('layerCount').textContent = layers.length?layers.length+' layer'+(layers.length>1?'s':''):'';
-  $('applyTransforms').disabled = !layers.length;
+  if(typeof updateSaveShare==='function') updateSaveShare();
   layers.forEach(l=>{
     const row=document.createElement('div'); row.className='layer'; row.dataset.id=l.id;
     row.innerHTML=`
@@ -3569,16 +3569,19 @@ function renderLayerList(){
   });
 }
 
-$('applyTransforms').addEventListener('click',async()=>{
-  await rebuild();
-  const vis=layers.filter(l=>!l.hidden && l.buffer);
-  if(!vis.length){ setViewStatus('Transforms applied (no visible layer to save).','ok'); return; }
-  let n=0;
-  for(const l of vis){
-    try{ GaussianSplats3D.KSplatLoader.downloadFile(l.buffer, l.name.replace(/\.[^.]+$/,'')+'.ksplat'); n++; }
-    catch(e){ console.error(e); }
-  }
-  setViewStatus('Transforms applied · saved '+n+' .ksplat file'+(n>1?'s':''),'ok');
+function updateSaveShare(){
+  const b=$('saveShare'); if(!b) return;
+  const ok = viewerActive && !meshActive && layers.length;   // splat scenes (compose has its own buttons)
+  b.style.display = ok ? '' : 'none';
+}
+$('saveShare') && $('saveShare').addEventListener('click', async ()=>{
+  if(!(viewerActive && layers.length)){ setViewStatus('Load a splat first.','warn'); return; }
+  try{
+    await rebuild();                                   // apply layer transforms
+    const vis=layers.filter(l=>!l.hidden && l.buffer);
+    for(const l of vis){ try{ GaussianSplats3D.KSplatLoader.downloadFile(l.buffer, l.name.replace(/\.[^.]+$/,'')+'.ksplat'); }catch(e){} }
+    await cloudShare({ephemeral:true});                // public link, 24h expiry, no login
+  }catch(e){ hideLoading(); setViewStatus('Save & Share failed: '+(e&&e.message||'unknown'),'err'); }
 });
 $('viewUp').addEventListener('change',async()=>{ syncUpChips(); if(layers.length){ await rebuild(); frameScene(); } });
 
@@ -3968,6 +3971,7 @@ function arVisible(){
   else if(viewerActive && !meshActive) ok = $('pillAR').dataset.ok==='1';  // splat → WebXR (Android only)
   $('pillAR').style.display = ok ? 'flex' : 'none';
   if(ok && !arPrep) $('pillAR').textContent = '⛶ View in AR';
+  if(typeof updateSaveShare==='function') updateSaveShare();
 }
 $('pillAR').addEventListener('click', async ()=>{
   if(meshActive){ openMeshAR(); return; }                          // mesh path: model-viewer
