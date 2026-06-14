@@ -3250,6 +3250,8 @@ async function addMeshObject(buf, name){
     m.mixers.push(mx); m.clipCount=(m.clipCount||0)+clips.length;
   }
   const rec={ id:++composeId, name:(name||obj.name||('object '+composeId)).replace(/\.(glb|gltf|fbx)$/i,''), node:obj, clips };
+  rec.srcBytes = (buf instanceof ArrayBuffer) ? buf.slice(0) : buf;   // keep raw file so the composition can be re-edited per-object
+  rec.isFbx = isFbxName(name);
   m.objects.push(rec);
   return rec;
 }
@@ -3898,9 +3900,37 @@ async function libRename(row,card){
 async function libEdit(row){
   try{
     document.body.classList.remove('shared','shared-open');     // ensure full editor, not viewer chrome
-    await loadFromUrl(row.url, row.format, row.name, row.meta);  // loads into the editing scene
+    if(row.meta && row.meta.parts && row.meta.parts.length>1){
+      await libEditComposition(row.meta.parts);                 // restore each original object + its transform
+    } else {
+      await loadFromUrl(row.url, row.format, row.name, row.meta);// single/baked asset
+    }
     try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){} // bring the stage into view on mobile
-  }catch(e){ setViewStatus('Could not open for editing: '+(e&&e.message||'unknown'),'err'); }
+  }catch(e){ hideLoading(); setViewStatus('Could not open for editing: '+(e&&e.message||'unknown'),'err'); }
+}
+async function libEditComposition(parts){
+  if(meshActive && mesh){                                        // clear any current composition first
+    try{ mesh.gizmo && mesh.gizmo.detach(); }catch(e){}
+    while(mesh.group && mesh.group.children.length){ mesh.group.remove(mesh.group.children[0]); }
+    mesh.objects=[]; mesh.mixers=[]; mesh.selected=null; mesh.clipCount=0;
+  }
+  for(let i=0;i<parts.length;i++){
+    const pt=parts[i];
+    showLoading('Rebuilding composition', (i+1)+' / '+parts.length);
+    const res=await fetch(pt.url); if(!res.ok) throw new Error('part '+res.status);
+    const buf=await res.arrayBuffer();
+    await loadMeshFromArrayBuffer(buf, (pt.name||'object')+(pt.fbx?'.fbx':'.glb'));
+    const rec=mesh.objects[mesh.objects.length-1];
+    if(rec && rec.node){
+      if(pt.p) rec.node.position.fromArray(pt.p);
+      if(pt.q) rec.node.quaternion.fromArray(pt.q);
+      if(pt.s) rec.node.scale.fromArray(pt.s);
+      rec.node.updateMatrixWorld(true);
+    }
+  }
+  hideLoading(); renderComposeList();
+  try{ mesh.selected=null; mesh.gizmo && mesh.gizmo.detach(); }catch(e){}
+  setViewStatus('Composition reopened · '+mesh.objects.length+' objects — edit freely','ok');
 }
 async function libShare(row,card,btn){
   try{
@@ -3923,6 +3953,7 @@ async function libDelete(row,card){
     await ensureFreshToken(); const H=authHeaders();
     await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(row.id)}`,{method:'DELETE',headers:H});
     if(row.path){ try{ await fetch(`${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${encodeURIComponent(row.path)}`,{method:'DELETE',headers:H}); }catch(_){} }
+    if(row.meta && row.meta.parts){ for(const pt of row.meta.parts){ if(pt&&pt.path){ try{ await fetch(`${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${encodeURIComponent(pt.path)}`,{method:'DELETE',headers:H}); }catch(_){} } } }
     if(card) card.remove();
     loadLibrary();
   }catch(e){ setViewStatus('Delete failed: '+(e&&e.message||'unknown'),'err'); }
@@ -4045,6 +4076,24 @@ async function cloudShare(opts){
                    allowDownload: !!($('shareAllowDl')&&$('shareAllowDl').checked) };
     const row={ name:art.name, path, format:ext, url:publicUrl, meta };
     if(loggedIn() && !ephemeral) row.expires_at=null;            // keep permanently for signed-in users (unless ephemeral)
+    // for a permanent multi-object composition, also store each source file + its transform,
+    // so "Edit" can rebuild the individual objects (not just the baked GLB)
+    if(loggedIn() && !ephemeral && meshActive && mesh && mesh.objects && mesh.objects.length>1){
+      try{
+        showLoading('Saving parts', mesh.objects.length+' objects');
+        const parts=[];
+        for(const o of mesh.objects){
+          if(!o.srcBytes || !o.node) continue;
+          const pe=o.isFbx?'fbx':'glb', ppath=uuid()+'.'+pe;
+          const pu=await putObject(ppath, o.srcBytes, H);
+          if(pu.ok) parts.push({ path:ppath, url:`${SUPA_URL}/storage/v1/object/public/${SUPA_BUCKET}/${ppath}`,
+            name:o.name||'object', fbx:!!o.isFbx,
+            p:o.node.position.toArray(), q:o.node.quaternion.toArray(), s:o.node.scale.toArray() });
+        }
+        if(parts.length>1) meta.parts=parts;
+      }catch(e){ /* parts are optional; baked GLB still works */ }
+      showLoading('Uploading to cloud', art.name+' · '+mb(bytes)+' MB');
+    }
     try{
       const ins=await fetch(`${SUPA_URL}/rest/v1/shares`,{
         method:'POST', headers:{...H,'Content-Type':'application/json',Prefer:'return=representation'},
