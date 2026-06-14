@@ -87,6 +87,7 @@
   .compose-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);cursor:pointer;font-size:12.5px;transition:.12s}
   .compose-row.sel{border-color:var(--accent);background:rgba(200,121,255,.08)}
   .compose-row .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .compose-row .sz{flex:0 0 auto;font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.02em}
   .compose-row .del{color:var(--faint);font-family:var(--mono);padding:2px 6px;border-radius:6px}
   .compose-row .del:hover{color:#ff7676;background:rgba(255,118,118,.1)}
   .compose-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -377,6 +378,7 @@
             <button class="chip" id="cmScale">⤢ Scale</button>
             <button class="chip on" id="cmGrid">▦ Grid</button>
             <button class="chip" id="cmSpace">🌐 World</button>
+            <button class="chip on" id="cmFloor">⏚ Floor</button>
           </div>
           <div id="composeList" class="compose-list"></div>
           <div id="composeUsdz" class="hint" style="color:var(--accent)"></div>
@@ -3179,14 +3181,37 @@ async function startMeshMode(){
   scene.add(grid);
   const gizmo=new deps.TransformControls(camera, renderer.domElement);
   gizmo.setSpace('world'); gizmo.size=0.9;
+  try{ gizmo.setRotationSnap(Math.PI/36); }catch(e){}   // rotate in 5° steps
   scene.add(gizmo);
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
-  mesh={renderer,scene,camera,controls,group,grid,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0,gridOn:true,gizmoSpace:'world'};
+  mesh={renderer,scene,camera,controls,group,grid,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0,gridOn:true,gizmoSpace:'world',floorSnap:true};
   gizmo.addEventListener('dragging-changed', e=>{
     controls.enabled=!e.value;
     if(e.value){ gizmoBefore = (typeof snapTRS==='function')?snapTRS(mesh&&mesh.selected):null; }
     else if(gizmoBefore && mesh && mesh.selected){ pushHistory(mesh.selected, gizmoBefore, snapTRS(mesh.selected)); gizmoBefore=null; }
+  });
+  // keep an object resting on the ground while moving (snap to floor; toggle off to go below)
+  gizmo.addEventListener('objectChange', ()=>{
+    if(!mesh || !mesh.floorSnap || !mesh.selected) return;
+    if(mesh.gizmo.getMode && mesh.gizmo.getMode()!=='translate') return;
+    try{
+      const box=new THREE.Box3().setFromObject(mesh.selected);
+      if(!box.isEmpty() && box.min.y < 0){ mesh.selected.position.y -= box.min.y; mesh.selected.updateMatrixWorld(true); }
+    }catch(e){}
+  });
+  // tap an object in the viewport to select it (and show its gizmo)
+  const _ray=new THREE.Raycaster(), _ndc=new THREE.Vector2(); let _pdx=0,_pdy=0,_pdt=0;
+  renderer.domElement.addEventListener('pointerdown', e=>{ _pdx=e.clientX; _pdy=e.clientY; _pdt=Date.now(); });
+  renderer.domElement.addEventListener('pointerup', e=>{
+    if(!mesh || (mesh.gizmo && mesh.gizmo.dragging)) return;            // ignore while transforming
+    if(Math.abs(e.clientX-_pdx)>6 || Math.abs(e.clientY-_pdy)>6 || Date.now()-_pdt>500) return;  // that was an orbit drag
+    const r=renderer.domElement.getBoundingClientRect();
+    _ndc.x=((e.clientX-r.left)/r.width)*2-1; _ndc.y=-((e.clientY-r.top)/r.height)*2+1;
+    _ray.setFromCamera(_ndc, camera);
+    const hits=_ray.intersectObjects(mesh.group.children, true);
+    if(hits.length){ const rec=recFromNode(hits[0].object); if(rec){ selectComposeObject(rec.id); return; } }
+    try{ mesh.gizmo.detach(); }catch(_){}; mesh.selected=null; renderComposeList();   // tapped empty space → deselect
   });
   composeUndo=[]; composeRedo=[]; gizmoBefore=null; if(typeof updateUndoButtons==='function') updateUndoButtons();
   const loop=()=>{ if(!mesh) return; const dt=mesh.clock.getDelta(); if(mesh.mixers&&mesh.mixers.length) mesh.mixers.forEach(mx=>mx.update(dt)); controls.update(); renderer.render(scene,camera); mesh.raf=requestAnimationFrame(loop); };
@@ -3292,7 +3317,8 @@ function renderComposeList(){
   const g=$('composeGroup'); if(!g) return;
   if(!(meshActive && mesh && mesh.objects)){ g.style.display='none'; return; }
   g.style.display=''; g.classList.remove('collapsed');
-  $('composeCount').textContent = mesh.objects.length+'';
+  const totalBytes = mesh.objects.reduce((s,o)=>s+((o.srcBytes&&o.srcBytes.byteLength)||0),0);
+  $('composeCount').textContent = mesh.objects.length + (totalBytes? ' · '+libBytes(totalBytes) : '');
   const list=$('composeList'); list.innerHTML='';
   const u=$('composeUsdz');
   if(u){ u.innerHTML='';
@@ -3308,8 +3334,9 @@ function renderComposeList(){
   mesh.objects.forEach(rec=>{
     const row=document.createElement('div'); row.className='compose-row'+(mesh.selected===rec.node?' sel':'');
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=rec.name;
+    const sz=document.createElement('span'); sz.className='sz'; sz.textContent=(rec.srcBytes&&rec.srcBytes.byteLength)?libBytes(rec.srcBytes.byteLength):'';
     const del=document.createElement('span'); del.className='del'; del.textContent='✕';
-    row.appendChild(nm); row.appendChild(del);
+    row.appendChild(nm); row.appendChild(sz); row.appendChild(del);
     row.addEventListener('click',e=>{ if(e.target===del) return; selectComposeObject(rec.id); });
     del.addEventListener('click',e=>{ e.stopPropagation(); deleteComposeObject(rec.id); });
     list.appendChild(row);
@@ -3353,11 +3380,17 @@ async function exportComposedGLB(){
   mesh.sourceBytes=buf; mesh.sourceName='composition.glb'; mesh.exportClipCount=clips.length;
   return buf;
 }
+function recFromNode(o){
+  if(!mesh) return null; let n=o;
+  while(n){ const rec=mesh.objects.find(x=>x.node===n); if(rec) return rec; if(n===mesh.group) break; n=n.parent; }
+  return null;
+}
 $('cmTranslate') && $('cmTranslate').addEventListener('click',()=>setGizmoMode('translate'));
 $('cmRotate') && $('cmRotate').addEventListener('click',()=>setGizmoMode('rotate'));
 $('cmScale') && $('cmScale').addEventListener('click',()=>setGizmoMode('scale'));
 $('cmAddMore') && $('cmAddMore').addEventListener('click',()=>$('viewInput').click());
 $('cmGrid') && $('cmGrid').addEventListener('click',()=>{ if(!mesh||!mesh.grid) return; mesh.gridOn=!mesh.gridOn; mesh.grid.visible=mesh.gridOn; $('cmGrid').classList.toggle('on', mesh.gridOn); });
+$('cmFloor') && $('cmFloor').addEventListener('click',()=>{ if(!mesh) return; mesh.floorSnap=!mesh.floorSnap; $('cmFloor').classList.toggle('on', mesh.floorSnap); setViewStatus(mesh.floorSnap?'Floor snap on — objects rest on the ground.':'Floor snap off — objects can go below ground.','ok'); });
 $('cmShare') && $('cmShare').addEventListener('click',async()=>{
   try{
     if(mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); }
