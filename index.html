@@ -530,6 +530,7 @@
     </div>
 
     <button class="btn" id="saveShare" style="display:none">👁 View &amp; Share</button>
+    <button class="btn ghost" id="saveLib" style="display:none">💾 Save to Library</button>
     <div class="library" id="libSection" style="display:none">
       <div class="lib-head">
         <span class="lib-title">◈ YOUR LIBRARY</span>
@@ -3597,17 +3598,24 @@ function renderLayerList(){
 }
 
 function updateSaveShare(){
-  const b=$('saveShare'); if(!b) return;
+  const b=$('saveShare'); const sl=$('saveLib');
   const ok = (viewerActive && !meshActive && layers.length) || (meshActive && mesh && ((mesh.objects&&mesh.objects.length) || mesh.sourceBytes || mesh.usdzBytes));
-  b.style.display = ok ? '' : 'none';
+  if(b) b.style.display = ok ? '' : 'none';
+  if(sl) sl.style.display = (ok && loggedIn()) ? '' : 'none';   // permanent save only for signed-in users
+}
+async function prepShareScene(label){
+  if(meshActive && mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); return true; }
+  if(viewerActive && layers.length){ await rebuild(); return true; }   // apply layer transforms
+  setViewStatus('Load a scene first.','warn'); return false;
 }
 $('saveShare') && $('saveShare').addEventListener('click', async ()=>{
-  try{
-    if(meshActive && mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); }
-    else if(viewerActive && layers.length){ await rebuild(); }      // apply layer transforms
-    else { setViewStatus('Load a scene first.','warn'); return; }
-    await cloudShare({ephemeral:true});                              // public 24h link, no login, no local download
-  }catch(e){ hideLoading(); setViewStatus('View & Share failed: '+(e&&e.message||'unknown'),'err'); }
+  try{ if(await prepShareScene()) await cloudShare({ephemeral:true}); }   // public 24h link
+  catch(e){ hideLoading(); setViewStatus('View & Share failed: '+(e&&e.message||'unknown'),'err'); }
+});
+$('saveLib') && $('saveLib').addEventListener('click', async ()=>{
+  if(!loggedIn()){ setViewStatus('Sign in first to save to your library.','warn'); return; }
+  try{ if(await prepShareScene()) await cloudShare({ephemeral:false, silent:true}); }  // permanent, no popup
+  catch(e){ hideLoading(); setViewStatus('Save to Library failed: '+(e&&e.message||'unknown'),'err'); }
 });
 
 // download the 3D model (splat → .ksplat, mesh/compose → baked .glb) — lives on the stage
@@ -3964,8 +3972,13 @@ async function cloudShare(opts){
     if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${ext}&up=${encodeURIComponent($('viewUp').value)}`;
 
     hideLoading();
-    openShareModal(link, thumb, ephemeral);
-    setViewStatus('Share link ready.','ok');
+    if(opts && opts.silent){
+      try{ await navigator.clipboard.writeText(link); }catch(_){}
+      setViewStatus(ephemeral?'Shared · link copied (24h).':'Saved to your library · link copied.','ok');
+    } else {
+      openShareModal(link, thumb, ephemeral);
+      setViewStatus('Share link ready.','ok');
+    }
     if(loggedIn() && typeof loadLibrary==='function') loadLibrary();
   }catch(err){
     hideLoading(); console.error(err);
