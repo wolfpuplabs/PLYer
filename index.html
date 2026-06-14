@@ -569,6 +569,7 @@
         <span class="tx"><span class="tt">Save to Library</span><span class="tc">Permanent · kept in your account</span></span>
       </button>
       <label class="dl-opt" id="dlOpt" style="display:none"><input type="checkbox" id="shareAllowDl"> Allow viewers to download this asset</label>
+      <label class="dl-opt" id="editOpt" style="display:none"><input type="checkbox" id="shareEditable" checked> Save as editable (keep individual objects)</label>
     </div>
     <div class="library" id="libSection" style="display:none">
       <div class="lib-head">
@@ -3650,6 +3651,7 @@ function updateSaveShare(){
   if(b){ b.style.display = ok ? '' : 'none'; b.classList.toggle('primary', ok && !loggedIn()); }
   if(sl) sl.style.display = (ok && loggedIn()) ? '' : 'none';   // permanent save only for signed-in users
   const dl=$('dlOpt'); if(dl) dl.style.display = ok ? 'flex' : 'none';
+  const eo=$('editOpt'); if(eo) eo.style.display = (ok && meshActive && mesh && mesh.objects && mesh.objects.length>1) ? 'flex' : 'none';
 }
 async function prepShareScene(label){
   if(meshActive && mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); return true; }
@@ -4078,7 +4080,8 @@ async function cloudShare(opts){
     if(loggedIn() && !ephemeral) row.expires_at=null;            // keep permanently for signed-in users (unless ephemeral)
     // for a permanent multi-object composition, also store each source file + its transform,
     // so "Edit" can rebuild the individual objects (not just the baked GLB)
-    if(loggedIn() && !ephemeral && meshActive && mesh && mesh.objects && mesh.objects.length>1){
+    if(loggedIn() && !ephemeral && meshActive && mesh && mesh.objects && mesh.objects.length>1
+       && (!$('shareEditable') || $('shareEditable').checked)){
       try{
         showLoading('Saving parts', mesh.objects.length+' objects');
         const parts=[];
