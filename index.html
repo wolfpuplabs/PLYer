@@ -204,6 +204,29 @@
   .drawer-close{position:absolute;top:16px;right:16px;z-index:2;width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:rgba(20,23,31,.7);color:var(--muted);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center}
   .drawer-close:hover{color:var(--text);border-color:var(--accent-dim)}
   .modal .thumb{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;background:#06080c;margin-bottom:14px;display:block}
+  /* library */
+  .library{margin:14px 0 4px}
+  .lib-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .lib-title{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  .lib-stat{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-left:auto}
+  .lib-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .lib-card{border:1px solid var(--border);border-radius:12px;background:var(--panel-2);overflow:hidden;display:flex;flex-direction:column}
+  .lib-card .lt{position:relative;aspect-ratio:4/3;background:#06080c;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .lib-card .lt img{width:100%;height:100%;object-fit:cover;display:block}
+  .lib-card .lt .ph{font-size:22px;color:var(--faint)}
+  .lib-card .lt .fmt{position:absolute;left:6px;top:6px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#dfe6f2;background:rgba(8,10,16,.7);border:1px solid var(--border);padding:2px 6px;border-radius:6px}
+  .lib-card .lt .st{position:absolute;right:6px;top:6px;font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:6px;border:1px solid var(--border)}
+  .lib-card .lt .st.live{color:#9be8b6;border-color:#2f5b41;background:rgba(20,46,32,.6)}
+  .lib-card .lt .st.exp{color:#ffd28a;border-color:#5b4a2f;background:rgba(46,38,20,.6)}
+  .lib-card .lt .st.dead{color:#ff9c9c;border-color:#5b2f2f;background:rgba(46,20,20,.6)}
+  .lib-card .lb{padding:8px 9px;display:flex;flex-direction:column;gap:5px}
+  .lib-card .ln{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lib-card .lmeta{font-family:var(--mono);font-size:9.5px;color:var(--faint);line-height:1.4}
+  .lib-card .lacts{display:flex;gap:5px;margin-top:2px}
+  .lib-card .lacts button{flex:1;font-family:var(--mono);font-size:10px;padding:5px 0;border-radius:7px;border:1px solid var(--border);background:var(--raised);color:var(--muted);cursor:pointer;transition:.15s}
+  .lib-card .lacts button:hover{color:var(--text);border-color:var(--accent-dim)}
+  .lib-card .lacts button.del:hover{color:#ff9c9c;border-color:#5b2f2f}
+  .lib-empty{font-family:var(--mono);font-size:11px;color:var(--faint);padding:10px 2px}
   .panel-toggle{position:absolute;top:14px;left:14px;z-index:13;font-family:var(--mono);font-size:12px;line-height:1;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);height:34px;padding:0 13px;border-radius:9px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s;display:none;align-items:center;justify-content:center;gap:7px}
   .panel-toggle:hover{border-color:var(--accent-dim)}
   /* model-viewer AR overlay */
@@ -507,6 +530,15 @@
     </div>
 
     <button class="btn" id="saveShare" style="display:none">👁 View &amp; Share</button>
+    <div class="library" id="libSection" style="display:none">
+      <div class="lib-head">
+        <span class="lib-title">◈ YOUR LIBRARY</span>
+        <span class="lib-stat" id="libStat"></span>
+        <button class="btn ghost sm" id="libRefresh" title="Refresh" style="width:auto">↻</button>
+      </div>
+      <div class="lib-grid" id="libGrid"></div>
+      <div class="lib-empty" id="libEmpty" style="display:none">No saved assets yet — tap 👁 View &amp; Share to add one.</div>
+    </div>
     <div class="acct" id="acctRow">
       <span class="acct-state" id="acctState">Not signed in</span>
       <button class="btn ghost sm" id="acctBtn" style="width:auto">Sign in</button>
@@ -3739,7 +3771,72 @@ function authHeaders(){ return loggedIn() ? {apikey:SUPA_KEY, Authorization:'Bea
 function refreshAcctUI(){
   if(loggedIn()){ $('acctState').textContent=session.email||'Signed in'; $('acctBtn').textContent='Logout'; const h=$('acctHint'); if(h) h.textContent='Signed in — your shares are saved to your library and stay live.'; }
   else { $('acctState').textContent='Not signed in'; $('acctBtn').textContent='Sign in'; const h=$('acctHint'); if(h) h.textContent='Sign in to save shares to your library — otherwise links expire after 24h.'; }
+  const ls=$('libSection');
+  if(ls){ if(loggedIn()){ ls.style.display=''; if(typeof loadLibrary==='function') loadLibrary(); } else { ls.style.display='none'; const g=$('libGrid'); if(g) g.innerHTML=''; } }
 }
+
+/* ===== Library — the signed-in user's saved shares ===== */
+function currentUid(){ try{ return JSON.parse(atob(session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub; }catch(e){ return null; } }
+function libShareLink(id){ return `${location.origin}${location.pathname}?share=${id}`; }
+function libBytes(b){ if(!b&&b!==0) return ''; return b>=1048576 ? (b/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(b/1024))+' KB'; }
+function fmtWhen(iso){ if(!iso) return ''; const d=new Date(iso), s=(Date.now()-d.getTime())/1000;
+  if(s<3600) return Math.max(1,Math.round(s/60))+'m ago'; if(s<86400) return Math.round(s/3600)+'h ago';
+  if(s<604800) return Math.round(s/86400)+'d ago'; return d.toLocaleDateString(); }
+function libStatus(expires_at){
+  if(!expires_at) return {cls:'live',txt:'Live'};
+  const left=(new Date(expires_at).getTime()-Date.now())/3600000;
+  if(left<=0) return {cls:'dead',txt:'Expired'};
+  return {cls:'exp', txt: left<1 ? Math.round(left*60)+'m left' : Math.round(left)+'h left'};
+}
+let _libBusy=false;
+async function loadLibrary(){
+  if(!loggedIn()) return; if(_libBusy) return; _libBusy=true;
+  const grid=$('libGrid'), empty=$('libEmpty'), stat=$('libStat');
+  try{
+    await ensureFreshToken();
+    const uid=currentUid();
+    const q=`${SUPA_URL}/rest/v1/shares?order=created_at.desc&select=id,name,format,url,meta,created_at,expires_at,path`
+            + (uid?`&owner=eq.${encodeURIComponent(uid)}`:'');
+    const r=await fetch(q,{headers:authHeaders()});
+    if(!r.ok){ if(stat) stat.textContent=''; if(grid) grid.innerHTML=''; if(empty){ empty.style.display=''; empty.textContent='Could not load library ('+r.status+'). Check the shares table policies.'; } return; }
+    const rows=await r.json();
+    if(grid) grid.innerHTML='';
+    let totalBytes=0;
+    rows.forEach(row=>{ const m=row.meta||{}; totalBytes+=(m.bytes||0); if(grid) grid.appendChild(libCard(row)); });
+    if(empty) empty.style.display = rows.length ? 'none' : '';
+    if(stat) stat.textContent = rows.length ? `${rows.length} asset${rows.length>1?'s':''} · ${libBytes(totalBytes)}` : '';
+  }catch(e){ if(stat) stat.textContent=''; }
+  finally{ _libBusy=false; }
+}
+function libCard(row){
+  const m=row.meta||{}, st=libStatus(row.expires_at), fmt=(row.format||'').toUpperCase();
+  const card=document.createElement('div'); card.className='lib-card';
+  const stats=[]; if(m.count) stats.push(m.count.toLocaleString()+' splats'); if(m.bytes) stats.push(libBytes(m.bytes));
+  const glyph = /glb|gltf|fbx|usdz/i.test(row.format)? '◫' : '◈';
+  card.innerHTML =
+    `<div class="lt">`
+    + (m.thumb ? `<img loading="lazy" src="${m.thumb}" alt="">` : `<span class="ph">${glyph}</span>`)
+    + `<span class="fmt">${fmt}</span><span class="st ${st.cls}">${st.txt}</span></div>`
+    + `<div class="lb"><div class="ln" title="${(row.name||'Untitled').replace(/"/g,'&quot;')}">${row.name||'Untitled'}</div>`
+    + `<div class="lmeta">${stats.join(' · ')||'—'}<br>${fmtWhen(row.created_at)}</div>`
+    + `<div class="lacts"><button class="open">Open</button><button class="copy">Copy</button><button class="del">✕</button></div></div>`;
+  const link=libShareLink(row.id);
+  card.querySelector('.open').onclick=()=>window.open(link,'_blank');
+  card.querySelector('.copy').onclick=async(e)=>{ try{ await navigator.clipboard.writeText(link); e.target.textContent='✓'; setTimeout(()=>e.target.textContent='Copy',1200); }catch(_){ window.prompt('Copy link:',link); } };
+  card.querySelector('.del').onclick=()=>libDelete(row,card);
+  return card;
+}
+async function libDelete(row,card){
+  if(!confirm('Delete "'+(row.name||'this asset')+'" from your library? This removes the share link permanently.')) return;
+  try{
+    await ensureFreshToken(); const H=authHeaders();
+    await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(row.id)}`,{method:'DELETE',headers:H});
+    if(row.path){ try{ await fetch(`${SUPA_URL}/storage/v1/object/${SUPA_BUCKET}/${encodeURIComponent(row.path)}`,{method:'DELETE',headers:H}); }catch(_){} }
+    if(card) card.remove();
+    loadLibrary();
+  }catch(e){ setViewStatus('Delete failed: '+(e&&e.message||'unknown'),'err'); }
+}
+$('libRefresh') && $('libRefresh').addEventListener('click', loadLibrary);
 function applyAuthData(d){
   if(!d || !d.access_token) return false;
   saveSession({ access_token:d.access_token, refresh_token:d.refresh_token,
@@ -3851,7 +3948,9 @@ async function cloudShare(opts){
     // record metadata (gives a short ?share=<id> link); fall back to a direct URL link if the table isn't set up
     let link;
     const xfLayer = art.layer ? {pos:art.layer.pos, rot:art.layer.rot, scale:art.layer.scale, alpha:art.layer.alpha} : null;
-    const meta = { up: $('viewUp').value, xf: xfLayer, cam: captureCam() };
+    const meta = { up: $('viewUp').value, xf: xfLayer, cam: captureCam(),
+                   thumb: (captureThumb(256)||null), bytes: bytes.byteLength,
+                   count: (art.layer&&art.layer.count)||null, kind: art.kind||ext };
     const row={ name:art.name, path, format:ext, url:publicUrl, meta };
     if(loggedIn() && !ephemeral) row.expires_at=null;            // keep permanently for signed-in users (unless ephemeral)
     try{
@@ -3867,6 +3966,7 @@ async function cloudShare(opts){
     hideLoading();
     openShareModal(link, thumb, ephemeral);
     setViewStatus('Share link ready.','ok');
+    if(loggedIn() && typeof loadLibrary==='function') loadLibrary();
   }catch(err){
     hideLoading(); console.error(err);
     let msg=err&&err.message?err.message:'unknown';
