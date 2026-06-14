@@ -3097,7 +3097,7 @@ async function startMeshMode(){
   scene.add(gizmo);
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
-  mesh={renderer,scene,camera,controls,group,grid,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0,gridOn:true};
+  mesh={renderer,scene,camera,controls,group,grid,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0,gridOn:true,gizmoSpace:'world'};
   gizmo.addEventListener('dragging-changed', e=>{
     controls.enabled=!e.value;
     if(e.value){ gizmoBefore = (typeof snapTRS==='function')?snapTRS(mesh&&mesh.selected):null; }
@@ -3217,10 +3217,16 @@ function deleteComposeObject(id){
   renderComposeList();
   if(!mesh.objects.length) setViewStatus('Composition is empty — add a GLB.','warn');
 }
+function applyGizmoSpace(){
+  if(!(mesh&&mesh.gizmo)) return;
+  const sp = (mesh.gizmo.getMode&&mesh.gizmo.getMode()==='scale') ? 'local' : (mesh.gizmoSpace||'world'); // scale must be local
+  try{ mesh.gizmo.setSpace(sp); }catch(e){}
+}
 function setGizmoMode(mode){
-  if(mesh&&mesh.gizmo){ try{ mesh.gizmo.setMode(mode); }catch(e){} }
+  if(mesh&&mesh.gizmo){ try{ mesh.gizmo.setMode(mode); }catch(e){} applyGizmoSpace(); }
   ['cmTranslate','cmRotate','cmScale'].forEach(id=>$(id)&&$(id).classList.remove('on'));
   $({translate:'cmTranslate',rotate:'cmRotate',scale:'cmScale'}[mode]) && $({translate:'cmTranslate',rotate:'cmRotate',scale:'cmScale'}[mode]).classList.add('on');
+  const sb=$('cmSpace'); if(sb) sb.style.opacity = (mode==='scale')?'0.45':'';   // space toggle inactive in scale
 }
 async function exportComposedGLB(){
   if(!(mesh && mesh.objects && mesh.objects.length)) throw new Error('nothing to export');
@@ -3239,7 +3245,7 @@ $('cmRotate') && $('cmRotate').addEventListener('click',()=>setGizmoMode('rotate
 $('cmScale') && $('cmScale').addEventListener('click',()=>setGizmoMode('scale'));
 $('cmAddMore') && $('cmAddMore').addEventListener('click',()=>$('viewInput').click());
 $('cmGrid') && $('cmGrid').addEventListener('click',()=>{ if(!mesh||!mesh.grid) return; mesh.gridOn=!mesh.gridOn; mesh.grid.visible=mesh.gridOn; $('cmGrid').classList.toggle('on', mesh.gridOn); });
-$('cmSpace') && $('cmSpace').addEventListener('click',()=>{ if(!mesh||!mesh.gizmo) return; const world=mesh.gizmo.space!=='world'; mesh.gizmo.setSpace(world?'world':'local'); $('cmSpace').textContent= world?'🌐 World':'📍 Local'; });
+$('cmSpace') && $('cmSpace').addEventListener('click',()=>{ if(!mesh||!mesh.gizmo) return; mesh.gizmoSpace=(mesh.gizmoSpace==='world')?'local':'world'; $('cmSpace').textContent=(mesh.gizmoSpace==='world')?'🌐 World':'📍 Local'; applyGizmoSpace(); });
 $('cmExport') && $('cmExport').addEventListener('click',async()=>{
   try{ showLoading('Exporting','baking one GLB'); const buf=await exportComposedGLB(); hideLoading();
     const blob=new Blob([buf],{type:'model/gltf-binary'}); const a=document.createElement('a');
