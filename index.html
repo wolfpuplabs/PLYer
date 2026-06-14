@@ -3139,6 +3139,22 @@ async function addMeshObject(buf, name){
     obj=fbx.parse(buf, '');                          // FBXLoader.parse is synchronous → Group
     if(!obj) throw new Error('could not parse FBX');
     clips=(obj.animations&&obj.animations.length)?obj.animations.slice():[];
+    // FBX (Phong) materials often export with strong emissive/specular → blown-out in AR.
+    // Convert them to matte PBR, keeping textures.
+    const toPBR=mat=>{
+      const sm=new THREE.MeshStandardMaterial({
+        color: mat.color ? mat.color.clone() : new THREE.Color(0xffffff),
+        map: mat.map||null, normalMap: mat.normalMap||null,
+        transparent: !!mat.transparent, opacity: (mat.opacity!=null)?mat.opacity:1,
+        side: (mat.side!=null)?mat.side:THREE.FrontSide,
+        vertexColors: !!mat.vertexColors,
+        metalness: 0, roughness: 1,
+        emissive: new THREE.Color(0x000000), emissiveIntensity: 0
+      });
+      if(sm.map){ try{ sm.map.colorSpace=THREE.SRGBColorSpace; }catch(e){} }
+      sm.name=mat.name||''; return sm;
+    };
+    obj.traverse(o=>{ if(o.isMesh && o.material){ o.material = Array.isArray(o.material)?o.material.map(toPBR):toPBR(o.material); } });
     // FBX is usually in centimetres → scale down so it sits sensibly next to GLB (metres)
     const box=new THREE.Box3().setFromObject(obj); const sz=new THREE.Vector3(); if(!box.isEmpty()){ box.getSize(sz); if(Math.max(sz.x,sz.y,sz.z)>50) obj.scale.multiplyScalar(0.01); }
   } else {
