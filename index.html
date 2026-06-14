@@ -3824,7 +3824,7 @@ async function loadLibrary(){
   try{
     await ensureFreshToken();
     const uid=currentUid();
-    const q=`${SUPA_URL}/rest/v1/shares?order=created_at.desc&select=id,name,format,url,meta,created_at,expires_at,path`
+    const q=`${SUPA_URL}/rest/v1/shares?order=created_at.desc&expires_at=is.null&select=id,name,format,url,meta,created_at,expires_at,path`
             + (uid?`&owner=eq.${encodeURIComponent(uid)}`:'');
     const r=await fetch(q,{headers:authHeaders()});
     if(!r.ok){ if(stat) stat.textContent=''; if(grid) grid.innerHTML=''; if(empty){ empty.style.display=''; empty.textContent='Could not load library ('+r.status+'). Check the shares table policies.'; } return; }
@@ -3856,7 +3856,6 @@ function libCard(row){
   return card;
 }
 async function libShare(row,card,btn){
-  const link=libShareLink(row.id);
   try{
     if(row.expires_at){                       // make the link permanent before sharing
       await ensureFreshToken();
@@ -3864,15 +3863,11 @@ async function libShare(row,card,btn){
         method:'PATCH', headers:{...authHeaders(),'Content-Type':'application/json'},
         body:JSON.stringify({expires_at:null}) });
       if(r.ok){ row.expires_at=null; const st=card&&card.querySelector('.st'); if(st){ st.className='st live'; st.textContent='Live'; } }
-      else setViewStatus('Sharing current link — could not make it permanent (run the "owner update shares" policy).','warn');
+      else setViewStatus('Could not make it permanent (run the "owner update shares" policy).','warn');
     }
-    if(navigator.share){
-      try{ await navigator.share({title:row.name||'Ply.er scene', text:'View this in 3D / AR', url:link}); }
-      catch(e){ if(e&&e.name==='AbortError') return; throw e; }
-    } else {
-      try{ await navigator.clipboard.writeText(link); if(btn){ btn.textContent='✓'; setTimeout(()=>btn.textContent='Share',1200);} setViewStatus('Permanent link copied.','ok'); }
-      catch(_){ window.prompt('Copy permanent link:',link); }
-    }
+    const link=libShareLink(row.id);
+    shareSceneName = row.name || 'Shared scene'; _cardCache=null;   // so the share-card + native sheet use this asset
+    openShareModal(link, (row.meta&&row.meta.thumb)||null, false);  // same panel as 24h share, but permanent note + link
   }catch(e){ setViewStatus('Share failed: '+(e&&e.message||'unknown'),'err'); }
 }
 async function libDelete(row,card){
