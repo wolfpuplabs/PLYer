@@ -252,6 +252,13 @@
   body.shared:not(.shared-open) .sidebar{display:none!important}
   body.shared:not(.shared-open) .panel-toggle,body.shared:not(.shared-open) .drawer-close{display:none!important}
   body.shared:not(.shared-open) .stage{order:0;position:absolute;inset:0;height:100dvh;min-height:0;width:100%}
+  body.shared .stage-mark{display:none}
+  .shared-info{position:absolute;left:16px;bottom:16px;z-index:12;display:none;flex-direction:column;gap:3px;pointer-events:none}
+  body.shared .shared-info{display:flex}
+  .shared-info .si-logo{font-family:var(--display,'Space Grotesk',sans-serif);font-weight:700;font-size:30px;line-height:1;letter-spacing:-.01em;color:#fff;text-decoration:none;pointer-events:auto;text-shadow:0 2px 20px rgba(0,0,0,.6)}
+  .shared-info .si-logo .dot{color:var(--accent)}
+  .shared-info .si-name{font-size:15px;color:var(--text);font-weight:600;margin-top:5px;max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 12px rgba(0,0,0,.7)}
+  .shared-info .si-meta{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.03em;text-shadow:0 1px 10px rgba(0,0,0,.7)}
   .panel-toggle{position:absolute;top:14px;left:14px;z-index:13;font-family:var(--mono);font-size:12px;line-height:1;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);height:34px;padding:0 13px;border-radius:9px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s;display:none;align-items:center;justify-content:center;gap:7px}
   .panel-toggle:hover{border-color:var(--accent-dim)}
   /* model-viewer AR overlay */
@@ -588,6 +595,11 @@
   <main class="stage">
     <button class="panel-toggle" id="panelToggle" title="Show controls">☰ Controls</button>
     <div class="stage-mark">Ply<span class="dot">.</span>er</div>
+    <div class="shared-info" id="sharedInfo" style="display:none">
+      <a class="si-logo" id="siLogo" href="#" target="_blank" rel="noopener">Ply<span class="dot">.</span>er</a>
+      <div class="si-name" id="siName"></div>
+      <div class="si-meta" id="siMeta"></div>
+    </div>
     <div class="load-overlay" id="loadOverlay">
       <div class="load-orb"><div class="ring"></div><div class="core"></div></div>
       <div class="load-text" id="loadText">Loading</div>
@@ -4135,6 +4147,20 @@ async function loadFromUrl(url, fmt, name, meta){
 function applySharedChrome(allowDownload){
   const sv=$('pillSave'); if(sv) sv.style.display='none';            // hide editing-only control for viewers
   const dl=$('pillDownload'); if(dl) dl.style.display = allowDownload ? '' : 'none';
+  if(!document.body.classList.contains('shared-open') && meshActive && mesh && mesh.gizmo){
+    try{ mesh.gizmo.detach(); mesh.gizmo.visible=false; }catch(e){}   // no transform axis for viewers
+    mesh.selected=null;
+  }
+}
+function setSharedInfo(name, fmt, meta){
+  const lg=$('siLogo'); if(lg) lg.href=location.pathname;            // tap the logo → open a fresh Ply.er
+  const nm=$('siName'); if(nm) nm.textContent = name || 'Untitled scene';
+  const m=meta||{}, bits=[];
+  const f=(fmt||m.kind||'').toString().toUpperCase(); if(f) bits.push(f);
+  if(m.count) bits.push(m.count.toLocaleString()+' splats');
+  if(m.bytes) bits.push(libBytes(m.bytes));
+  const mt=$('siMeta'); if(mt) mt.textContent = bits.join('  ·  ');
+  const si=$('sharedInfo'); if(si) si.style.display='flex';
 }
 $('openEditor') && $('openEditor').addEventListener('click', ()=>{
   const open=document.body.classList.toggle('shared-open');
@@ -4154,12 +4180,14 @@ async function loadFromQuery(){
       if(!r.ok) throw new Error('lookup '+r.status);
       const rows=await r.json();
       if(rows&&rows[0]){ await loadFromUrl(rows[0].url, rows[0].format, rows[0].name, rows[0].meta);
-        applySharedChrome(!!(rows[0].meta && rows[0].meta.allowDownload)); }
+        applySharedChrome(!!(rows[0].meta && rows[0].meta.allowDownload));
+        setSharedInfo(rows[0].name, rows[0].format, rows[0].meta); }
       else { hideLoading(); setViewStatus('Shared scene not found.','err'); }
     }catch(e){ hideLoading(); setViewStatus('Share lookup failed: '+(e&&e.message?e.message:'error'),'err'); }
   } else if(u){
     await loadFromUrl(u, f||'', null, q.get('up')?{up:q.get('up')}:null);
     applySharedChrome(false);                                        // direct-URL links: no download by default
+    setSharedInfo('Shared scene', f, null);
   }
 }
 
@@ -4245,6 +4273,8 @@ async function openMeshAR(){
   // a supplied .usdz overrides iOS Quick Look so animations play on iPhone/iPad
   if(mesh.usdzBytes){ mvUsdzUrl=URL.createObjectURL(new Blob([mesh.usdzBytes],{type:'model/vnd.usdz+zip'})); mv.setAttribute('ios-src', mvUsdzUrl); }
   else { mv.removeAttribute('ios-src'); }
+  // show a thumbnail poster while (and if) the 3D model is still loading
+  try{ const poster=captureThumb(640); if(poster){ mv.setAttribute('poster',poster); mv.setAttribute('reveal','auto'); } else mv.removeAttribute('poster'); }catch(e){}
   ov.classList.add('show');
   setViewStatus(mesh.usdzBytes ? 'Tap “View in AR” — iOS will use your .usdz (animated).' : 'Tap “View in AR” to place it in your room.','ok');
 }
