@@ -563,11 +563,9 @@
 
     <div class="share-actions">
       <button class="act-tile" id="saveShare" style="display:none">
-        <span class="ti">👁</span>
         <span class="tx"><span class="tt">View &amp; Share</span><span class="tc">Public link · expires in 24h</span></span>
       </button>
       <button class="act-tile primary" id="saveLib" style="display:none">
-        <span class="ti">💾</span>
         <span class="tx"><span class="tt">Save to Library</span><span class="tc">Permanent · kept in your account</span></span>
       </button>
       <label class="dl-opt" id="dlOpt" style="display:none"><input type="checkbox" id="shareAllowDl"> Allow viewers to download this asset</label>
@@ -3875,9 +3873,9 @@ function libCard(row){
     + `<span class="fmt">${fmt}</span><span class="st ${st.cls}">${st.txt}</span></div>`
     + `<div class="lb"><div class="ln" title="Tap to rename"><span class="lnm">${row.name||'Untitled'}</span><span class="edit">✎</span></div>`
     + `<div class="lmeta">${stats.join(' · ')||'—'}<br>${fmtWhen(row.created_at)}</div>`
-    + `<div class="lacts"><button class="open">Open</button><button class="share">Share</button><button class="del">✕</button></div></div>`;
+    + `<div class="lacts"><button class="edit">Edit</button><button class="share">Share</button><button class="del">✕</button></div></div>`;
   const link=libShareLink(row.id);
-  card.querySelector('.open').onclick=()=>window.open(link,'_blank');
+  card.querySelector('.edit').onclick=()=>libEdit(row);
   card.querySelector('.share').onclick=(e)=>libShare(row,card,e.target);
   card.querySelector('.ln').onclick=()=>libRename(row,card);
   card.querySelector('.del').onclick=()=>libDelete(row,card);
@@ -3896,6 +3894,13 @@ async function libRename(row,card){
     if(r.ok){ row.name=name; const ln=card&&card.querySelector('.lnm'); if(ln) ln.textContent=name; setViewStatus('Renamed.','ok'); }
     else setViewStatus('Rename failed ('+r.status+') — run the "owner update shares" policy in Supabase.','err');
   }catch(e){ setViewStatus('Rename failed: '+(e&&e.message||'unknown'),'err'); }
+}
+async function libEdit(row){
+  try{
+    document.body.classList.remove('shared','shared-open');     // ensure full editor, not viewer chrome
+    await loadFromUrl(row.url, row.format, row.name, row.meta);  // loads into the editing scene
+    try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){} // bring the stage into view on mobile
+  }catch(e){ setViewStatus('Could not open for editing: '+(e&&e.message||'unknown'),'err'); }
 }
 async function libShare(row,card,btn){
   try{
