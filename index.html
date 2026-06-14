@@ -378,7 +378,6 @@
             <button class="chip" id="cmScale">⤢ Scale</button>
             <button class="chip on" id="cmGrid">▦ Grid</button>
             <button class="chip" id="cmSpace">🌐 World</button>
-            <button class="chip on" id="cmFloor">⏚ Floor</button>
           </div>
           <div id="composeList" class="compose-list"></div>
           <div id="composeUsdz" class="hint" style="color:var(--accent)"></div>
@@ -3185,20 +3184,11 @@ async function startMeshMode(){
   scene.add(gizmo);
   const onResize=()=>{ const W=host.clientWidth||800,H=host.clientHeight||600; renderer.setSize(W,H); camera.aspect=W/H; camera.updateProjectionMatrix(); };
   window.addEventListener('resize',onResize);
-  mesh={renderer,scene,camera,controls,group,grid,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0,gridOn:true,gizmoSpace:'world',floorSnap:true};
+  mesh={renderer,scene,camera,controls,group,grid,env,pmrem,onResize,raf:0,deps,mixer:null,mixers:[],clock:new THREE.Clock(),objects:[],gizmo,selected:null,clipCount:0,gridOn:true,gizmoSpace:'world'};
   gizmo.addEventListener('dragging-changed', e=>{
     controls.enabled=!e.value;
     if(e.value){ gizmoBefore = (typeof snapTRS==='function')?snapTRS(mesh&&mesh.selected):null; }
     else if(gizmoBefore && mesh && mesh.selected){ pushHistory(mesh.selected, gizmoBefore, snapTRS(mesh.selected)); gizmoBefore=null; }
-  });
-  // keep an object resting on the ground while moving (snap to floor; toggle off to go below)
-  gizmo.addEventListener('objectChange', ()=>{
-    if(!mesh || !mesh.floorSnap || !mesh.selected) return;
-    if(mesh.gizmo.getMode && mesh.gizmo.getMode()!=='translate') return;
-    try{
-      const box=new THREE.Box3().setFromObject(mesh.selected);
-      if(!box.isEmpty() && box.min.y < 0){ mesh.selected.position.y -= box.min.y; mesh.selected.updateMatrixWorld(true); }
-    }catch(e){}
   });
   // tap an object in the viewport to select it (and show its gizmo)
   const _ray=new THREE.Raycaster(), _ndc=new THREE.Vector2(); let _pdx=0,_pdy=0,_pdt=0;
@@ -3398,7 +3388,6 @@ $('cmGrid') && $('cmGrid').addEventListener('click',()=>{
   else if(mesh.selected){ try{ mesh.gizmo.attach(mesh.selected); }catch(e){} }
   $('cmGrid').classList.toggle('on', mesh.gridOn);
 });
-$('cmFloor') && $('cmFloor').addEventListener('click',()=>{ if(!mesh) return; mesh.floorSnap=!mesh.floorSnap; $('cmFloor').classList.toggle('on', mesh.floorSnap); setViewStatus(mesh.floorSnap?'Floor snap on — objects rest on the ground.':'Floor snap off — objects can go below ground.','ok'); });
 $('cmShare') && $('cmShare').addEventListener('click',async()=>{
   try{
     if(mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); }
