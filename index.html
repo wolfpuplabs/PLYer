@@ -83,6 +83,8 @@
   .group.collapsed .group-content{grid-template-rows:0fr}
   .group-inner{overflow:hidden;min-height:0;display:flex;flex-direction:column;gap:13px;padding-top:13px}
   .compose-modes{display:flex;flex-wrap:wrap;gap:8px}
+  .compose-namefield{width:100%;margin:10px 0 2px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);color:var(--text);font-family:inherit;font-size:13px}
+  .compose-namefield:focus{outline:none;border-color:var(--accent)}
   .compose-list{display:flex;flex-direction:column;gap:6px}
   .compose-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);cursor:pointer;font-size:12.5px;transition:.12s}
   .compose-row.sel{border-color:var(--accent);background:rgba(200,121,255,.08)}
@@ -379,6 +381,7 @@
             <button class="chip on" id="cmGrid">▦ Grid</button>
             <button class="chip" id="cmSpace">🌐 World</button>
           </div>
+          <input type="text" id="composeName" class="compose-namefield" placeholder="Scene name (used when sharing)" />
           <div id="composeList" class="compose-list"></div>
           <div id="composeUsdz" class="hint" style="color:var(--accent)"></div>
           <div class="compose-actions">
@@ -3309,6 +3312,7 @@ function renderComposeList(){
   g.style.display=''; g.classList.remove('collapsed');
   const totalBytes = mesh.objects.reduce((s,o)=>s+((o.srcBytes&&o.srcBytes.byteLength)||0),0);
   $('composeCount').textContent = mesh.objects.length + (totalBytes? ' · '+libBytes(totalBytes) : '');
+  const cn=$('composeName'); if(cn && !cn.value.trim() && mesh.objects.length) cn.value = mesh.objects[0].name||'';
   const list=$('composeList'); list.innerHTML='';
   const u=$('composeUsdz');
   if(u){ u.innerHTML='';
@@ -3367,7 +3371,8 @@ async function exportComposedGLB(){
   const out=await new Promise((res,rej)=>{ try{ exporter.parse(mesh.group, r=>res(r), err=>rej(err||new Error('export failed')), opts); }catch(e){ rej(e); } });
   if(keep){ try{ mesh.gizmo.attach(keep); }catch(e){} }
   const buf=(out instanceof ArrayBuffer)?out:new TextEncoder().encode(JSON.stringify(out)).buffer;
-  mesh.sourceBytes=buf; mesh.sourceName='composition.glb'; mesh.exportClipCount=clips.length;
+  const cn=$('composeName'), base=((cn&&cn.value.trim()) || (mesh.objects[0]&&mesh.objects[0].name) || 'composition').replace(/\.(glb|gltf|fbx)$/i,'');
+  mesh.sourceBytes=buf; mesh.sourceName=base+'.glb'; mesh.exportClipCount=clips.length;
   return buf;
 }
 function recFromNode(o){
@@ -3734,6 +3739,7 @@ async function newScene(){
     const cg=$('composeGroup'); if(cg) cg.style.display='none';
     emptyState.style.display='flex'; ambient.style.display='';
     const dl=$('shareAllowDl'); if(dl) dl.checked=false;
+    const cn=$('composeName'); if(cn) cn.value='';
     const si=$('sharedInfo'); if(si) si.style.display='none';
     if(typeof updateSaveShare==='function') updateSaveShare();
     if(typeof arVisible==='function') arVisible();
@@ -3965,6 +3971,7 @@ async function libOpenReplace(row){
     try{ disposeMeshViewer(); }catch(e){}            // drop any current mesh composition
     try{ await disposeViewer(); }catch(e){}          // drop any current splat scene
     layers=[]; if(typeof renderLayerList==='function') renderLayerList();
+    const cn=$('composeName'); if(cn) cn.value=row.name||'';
     if(row.meta && row.meta.parts && row.meta.parts.length>1){ await libEditComposition(row.meta.parts); }
     else { await loadFromUrl(row.url, row.format, row.name, row.meta); }
     try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){}
@@ -3973,6 +3980,7 @@ async function libOpenReplace(row){
 async function libEdit(row){
   try{
     document.body.classList.remove('shared','shared-open');     // ensure full editor, not viewer chrome
+    const cn=$('composeName'); if(cn) cn.value=row.name||'';
     if(row.meta && row.meta.parts && row.meta.parts.length>1){
       await libEditComposition(row.meta.parts);                 // restore each original object + its transform
     } else {
