@@ -220,7 +220,10 @@
   .lib-card .lt .st.exp{color:#ffd28a;border-color:#5b4a2f;background:rgba(46,38,20,.6)}
   .lib-card .lt .st.dead{color:#ff9c9c;border-color:#5b2f2f;background:rgba(46,20,20,.6)}
   .lib-card .lb{padding:8px 9px;display:flex;flex-direction:column;gap:5px}
-  .lib-card .ln{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lib-card .ln{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;display:flex;align-items:center;gap:5px}
+  .lib-card .ln .lnm{overflow:hidden;text-overflow:ellipsis}
+  .lib-card .ln .edit{flex:0 0 auto;font-size:10px;color:var(--faint);opacity:.6;transition:.15s}
+  .lib-card .ln:hover .edit{opacity:1;color:var(--accent)}
   .lib-card .lmeta{font-family:var(--mono);font-size:9.5px;color:var(--faint);line-height:1.4}
   .lib-card .lacts{display:flex;gap:5px;margin-top:2px}
   .lib-card .lacts button{flex:1;font-family:var(--mono);font-size:10px;padding:5px 0;border-radius:7px;border:1px solid var(--border);background:var(--raised);color:var(--muted);cursor:pointer;transition:.15s}
@@ -3846,14 +3849,29 @@ function libCard(row){
     `<div class="lt">`
     + (m.thumb ? `<img loading="lazy" src="${m.thumb}" alt="">` : `<span class="ph">${glyph}</span>`)
     + `<span class="fmt">${fmt}</span><span class="st ${st.cls}">${st.txt}</span></div>`
-    + `<div class="lb"><div class="ln" title="${(row.name||'Untitled').replace(/"/g,'&quot;')}">${row.name||'Untitled'}</div>`
+    + `<div class="lb"><div class="ln" title="Tap to rename"><span class="lnm">${row.name||'Untitled'}</span><span class="edit">✎</span></div>`
     + `<div class="lmeta">${stats.join(' · ')||'—'}<br>${fmtWhen(row.created_at)}</div>`
     + `<div class="lacts"><button class="open">Open</button><button class="share">Share</button><button class="del">✕</button></div></div>`;
   const link=libShareLink(row.id);
   card.querySelector('.open').onclick=()=>window.open(link,'_blank');
   card.querySelector('.share').onclick=(e)=>libShare(row,card,e.target);
+  card.querySelector('.ln').onclick=()=>libRename(row,card);
   card.querySelector('.del').onclick=()=>libDelete(row,card);
   return card;
+}
+async function libRename(row,card){
+  const cur=row.name||'';
+  const next=window.prompt('Rename asset:',cur);
+  if(next===null) return;                        // cancelled
+  const name=next.trim(); if(!name || name===cur) return;
+  try{
+    await ensureFreshToken();
+    const r=await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(row.id)}`,{
+      method:'PATCH', headers:{...authHeaders(),'Content-Type':'application/json'},
+      body:JSON.stringify({name}) });
+    if(r.ok){ row.name=name; const ln=card&&card.querySelector('.lnm'); if(ln) ln.textContent=name; setViewStatus('Renamed.','ok'); }
+    else setViewStatus('Rename failed ('+r.status+') — run the "owner update shares" policy in Supabase.','err');
+  }catch(e){ setViewStatus('Rename failed: '+(e&&e.message||'unknown'),'err'); }
 }
 async function libShare(row,card,btn){
   try{
