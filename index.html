@@ -328,7 +328,10 @@
             <button class="btn" id="cmAddMore" style="width:auto">＋ Add GLB</button>
           </div>
           <div class="compose-actions">
-            <button class="btn" id="cmExport" style="width:auto">⤓ Save GLB</button>
+            <button class="btn" id="cmExport" style="width:auto">⤓ Apply &amp; Save</button>
+          </div>
+          <div class="compose-actions">
+            <button class="btn ghost" id="cmShare" style="width:auto">☁ Share · expires 24h</button>
           </div>
           <div class="hint">Tap an object to select, then drag the gizmo to move / rotate / scale. Export bakes everything into one .glb for AR &amp; sharing.</div>
         </div>
@@ -3275,6 +3278,12 @@ $('cmRotate') && $('cmRotate').addEventListener('click',()=>setGizmoMode('rotate
 $('cmScale') && $('cmScale').addEventListener('click',()=>setGizmoMode('scale'));
 $('cmAddMore') && $('cmAddMore').addEventListener('click',()=>$('viewInput').click());
 $('cmGrid') && $('cmGrid').addEventListener('click',()=>{ if(!mesh||!mesh.grid) return; mesh.gridOn=!mesh.gridOn; mesh.grid.visible=mesh.gridOn; $('cmGrid').classList.toggle('on', mesh.gridOn); });
+$('cmShare') && $('cmShare').addEventListener('click',async()=>{
+  try{
+    if(mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); }
+    await cloudShare({ephemeral:true});   // public link, 24h expiry, no login needed
+  }catch(e){ hideLoading(); setViewStatus('Share failed: '+(e&&e.message||'unknown'),'err'); }
+});
 $('cmSpace') && $('cmSpace').addEventListener('click',()=>{ if(!mesh||!mesh.gizmo) return; mesh.gizmoSpace=(mesh.gizmoSpace==='world')?'local':'world'; $('cmSpace').textContent=(mesh.gizmoSpace==='world')?'🌐 World':'📍 Local'; applyGizmoSpace(); });
 $('cmExport') && $('cmExport').addEventListener('click',async()=>{
   try{ showLoading('Exporting','baking one GLB'); const buf=await exportComposedGLB(); hideLoading();
@@ -3792,7 +3801,8 @@ function putObject(path, bytes, H){
   });
 }
 
-async function cloudShare(){
+async function cloudShare(opts){
+  const ephemeral = !!(opts && opts.ephemeral);   // force 24h expiry, never saved to library
   const art=shareableArtifact();
   if(!art){ setViewStatus('Load a scene first.','warn'); return; }
   if(art.extra) setViewStatus('Sharing the first visible layer only.','warn');
@@ -3826,7 +3836,7 @@ async function cloudShare(){
     const xfLayer = art.layer ? {pos:art.layer.pos, rot:art.layer.rot, scale:art.layer.scale, alpha:art.layer.alpha} : null;
     const meta = { up: $('viewUp').value, xf: xfLayer, cam: captureCam() };
     const row={ name:art.name, path, format:ext, url:publicUrl, meta };
-    if(loggedIn()) row.expires_at=null;            // keep permanently for signed-in users
+    if(loggedIn() && !ephemeral) row.expires_at=null;            // keep permanently for signed-in users (unless ephemeral)
     try{
       const ins=await fetch(`${SUPA_URL}/rest/v1/shares`,{
         method:'POST', headers:{...H,'Content-Type':'application/json',Prefer:'return=representation'},
@@ -3838,7 +3848,7 @@ async function cloudShare(){
     if(!link) link=`${location.origin}${location.pathname}?u=${encodeURIComponent(publicUrl)}&f=${ext}&up=${encodeURIComponent($('viewUp').value)}`;
 
     hideLoading();
-    openShareModal(link, thumb);
+    openShareModal(link, thumb, ephemeral);
     setViewStatus('Share link ready.','ok');
   }catch(err){
     hideLoading(); console.error(err);
@@ -3852,15 +3862,17 @@ async function cloudShare(){
 $('pillCloud').addEventListener('click',cloudShare);
 
 let shareThumbUrl=null, shareSceneName='';
-function openShareModal(link, thumb){
+function openShareModal(link, thumb, ephemeral){
   $('shareLink').value=link;
   shareThumbUrl = thumb || null;
   const ti=$('shareThumb');
   if(thumb){ ti.src=thumb; ti.style.display=''; } else { ti.style.display='none'; }
   const note=$('shareModal').querySelector('p');
-  if(note) note.textContent = loggedIn()
-    ? 'Saved to your account — this link stays live until you delete it.'
-    : 'Heads up: anonymous uploads auto-delete after 24 hours. Sign in to keep them.';
+  if(note) note.textContent = ephemeral
+    ? 'Public link active for 24 hours, then auto-deletes. No sign-in needed.'
+    : (loggedIn()
+        ? 'Saved to your account — this link stays live until you delete it.'
+        : 'Heads up: anonymous uploads auto-delete after 24 hours. Sign in to keep them.');
   $('shareModal').classList.add('show');
   renderQR(link);
   setTimeout(()=>{ $('shareLink').focus(); $('shareLink').select(); },50);
