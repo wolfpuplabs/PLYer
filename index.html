@@ -211,7 +211,10 @@
   .lib-stat{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-left:auto}
   .lib-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
   .lib-card{border:1px solid var(--border);border-radius:12px;background:var(--panel-2);overflow:hidden;display:flex;flex-direction:column}
-  .lib-card .lt{position:relative;aspect-ratio:4/3;background:#06080c;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .lib-card .lt{position:relative;aspect-ratio:4/3;background:#06080c;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
+  .lib-card .lt:hover{filter:brightness(1.08)}
+  .lib-card .lt::after{content:"▶ Open";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--mono);font-size:11px;color:#fff;background:rgba(8,10,16,.66);border:1px solid var(--border);padding:5px 10px;border-radius:8px;opacity:0;transition:.15s;pointer-events:none}
+  .lib-card .lt:hover::after{opacity:1}
   .lib-card .lt img{width:100%;height:100%;object-fit:cover;display:block}
   .lib-card .lt .ph{font-size:22px;color:var(--faint)}
   .lib-card .lt .fmt{position:absolute;left:6px;top:6px;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#dfe6f2;background:rgba(8,10,16,.7);border:1px solid var(--border);padding:2px 6px;border-radius:6px}
@@ -3879,6 +3882,7 @@ function libCard(row){
     + `<div class="lmeta">${stats.join(' · ')||'—'}<br>${fmtWhen(row.created_at)}</div>`
     + `<div class="lacts"><button class="edit">Edit</button><button class="share">Share</button><button class="del">✕</button></div></div>`;
   const link=libShareLink(row.id);
+  card.querySelector('.lt').onclick=()=>libOpenReplace(row);
   card.querySelector('.edit').onclick=()=>libEdit(row);
   card.querySelector('.share').onclick=(e)=>libShare(row,card,e.target);
   card.querySelector('.ln').onclick=()=>libRename(row,card);
@@ -3898,6 +3902,18 @@ async function libRename(row,card){
     if(r.ok){ row.name=name; const ln=card&&card.querySelector('.lnm'); if(ln) ln.textContent=name; setViewStatus('Renamed.','ok'); }
     else setViewStatus('Rename failed ('+r.status+') — run the "owner update shares" policy in Supabase.','err');
   }catch(e){ setViewStatus('Rename failed: '+(e&&e.message||'unknown'),'err'); }
+}
+async function libOpenReplace(row){
+  try{
+    document.body.classList.remove('shared','shared-open');
+    showLoading('Opening', row.name||'');
+    try{ disposeMeshViewer(); }catch(e){}            // drop any current mesh composition
+    try{ await disposeViewer(); }catch(e){}          // drop any current splat scene
+    layers=[]; if(typeof renderLayerList==='function') renderLayerList();
+    if(row.meta && row.meta.parts && row.meta.parts.length>1){ await libEditComposition(row.meta.parts); }
+    else { await loadFromUrl(row.url, row.format, row.name, row.meta); }
+    try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){}
+  }catch(e){ hideLoading(); setViewStatus('Could not open: '+(e&&e.message||'unknown'),'err'); }
 }
 async function libEdit(row){
   try{
