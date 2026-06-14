@@ -327,12 +327,6 @@
             <button class="btn" id="cmRedo" style="width:auto" disabled>↷ Redo</button>
             <button class="btn" id="cmAddMore" style="width:auto">＋ Add GLB</button>
           </div>
-          <div class="compose-actions">
-            <button class="btn" id="cmExport" style="width:auto">⤓ Apply &amp; Save</button>
-          </div>
-          <div class="compose-actions">
-            <button class="btn ghost" id="cmShare" style="width:auto">☁ Share · expires 24h</button>
-          </div>
           <div class="hint">Tap an object to select, then drag the gizmo to move / rotate / scale. Export bakes everything into one .glb for AR &amp; sharing.</div>
         </div>
 
@@ -512,7 +506,7 @@
       </div>
     </div>
 
-    <button class="btn" id="saveShare" style="display:none">💾 Save &amp; Share</button>
+    <button class="btn" id="saveShare" style="display:none">👁 View &amp; Share</button>
     <div class="acct" id="acctRow">
       <span class="acct-state" id="acctState">Not signed in</span>
       <button class="btn ghost sm" id="acctBtn" style="width:auto">Sign in</button>
@@ -535,6 +529,7 @@
     <div class="stage-bar" id="stageBar">
       <div class="pill" id="pillWalk" style="display:none">🚶 Walk</div>
       <div class="pill" id="pillCloud" style="display:none">☁ Link</div>
+      <div class="pill" id="pillDownload" style="display:none">⤓ 3D</div>
       <div class="pill" id="pillFrame" style="display:none">⤢ Frame</div>
       <div class="pill" id="pillSave">＋ Save view</div>
     </div>
@@ -3195,7 +3190,7 @@ async function loadMeshFromArrayBuffer(buf, name){
     selectComposeObject(rec.id);
     renderComposeList();
     hideLoading(); ambient.style.display='none';
-    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
+    stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display=''; $('pillDownload').style.display='';
     if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none';
     if(typeof arVisible==='function') arVisible();
     setViewStatus((adding?'Added ':'Mesh loaded · ')+(rec.name||'model')+' · '+mesh.objects.length+' object'+(mesh.objects.length>1?'s':''),'ok');
@@ -3225,6 +3220,7 @@ function renderComposeList(){
     }
   }
   if(typeof updateUndoButtons==='function') updateUndoButtons();
+  if(typeof updateSaveShare==='function') updateSaveShare();
   mesh.objects.forEach(rec=>{
     const row=document.createElement('div'); row.className='compose-row'+(mesh.selected===rec.node?' sel':'');
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=rec.name;
@@ -3332,7 +3328,7 @@ async function attachUsdz(file){
   const buf=await file.arrayBuffer();
   mesh.usdzBytes=buf; mesh.usdzName=file.name||'model.usdz';
   emptyState.style.display='none'; ambient.style.display='none';
-  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display=''; $('pillDownload').style.display='';
   if(typeof exitWalk==='function')exitWalk(); $('pillWalk').style.display='none';
   renderComposeList(); if(typeof arVisible==='function') arVisible();
   setViewStatus('iOS-AR file attached: '+mesh.usdzName+' — animations will play in iOS Quick Look.'+(mesh.objects&&mesh.objects.length?'':' Add a .glb too for on-screen preview & Android AR.'),'ok');
@@ -3400,7 +3396,7 @@ async function rebuild(){
     if(prevCam) applyCam(prevCam); else requestAnimationFrame(()=>frameScene());
     hideLoading();
   }
-  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display='';
+  stageBar.classList.add('show'); $('bmSave').disabled=false; $('pillFrame').style.display=''; $('pillCloud').style.display=''; $('pillDownload').style.display='';
   $('pillWalk').style.display = arPrep ? 'none' : '';
   if(arPrep && typeof exitWalk==='function') exitWalk();
   if(walkMode && !arPrep && viewer && viewer.controls){ const ctr=viewer.controls; ctr.enabled=false; if(typeof ctr.update==='function' && !ctr._origUpdate){ ctr._origUpdate=ctr.update; ctr.update=function(){}; } if(typeof buildWalkCollision==='function'){ buildWalkCollision(); refreshWalkEye(); } walkLast=performance.now(); if(!walkRAF) walkRAF=requestAnimationFrame(walkLoop); }
@@ -3571,18 +3567,37 @@ function renderLayerList(){
 
 function updateSaveShare(){
   const b=$('saveShare'); if(!b) return;
-  const ok = viewerActive && !meshActive && layers.length;   // splat scenes (compose has its own buttons)
+  const ok = (viewerActive && !meshActive && layers.length) || (meshActive && mesh && ((mesh.objects&&mesh.objects.length) || mesh.sourceBytes || mesh.usdzBytes));
   b.style.display = ok ? '' : 'none';
 }
 $('saveShare') && $('saveShare').addEventListener('click', async ()=>{
-  if(!(viewerActive && layers.length)){ setViewStatus('Load a splat first.','warn'); return; }
   try{
-    await rebuild();                                   // apply layer transforms
-    const vis=layers.filter(l=>!l.hidden && l.buffer);
-    for(const l of vis){ try{ GaussianSplats3D.KSplatLoader.downloadFile(l.buffer, l.name.replace(/\.[^.]+$/,'')+'.ksplat'); }catch(e){} }
-    await cloudShare({ephemeral:true});                // public link, 24h expiry, no login
-  }catch(e){ hideLoading(); setViewStatus('Save & Share failed: '+(e&&e.message||'unknown'),'err'); }
+    if(meshActive && mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); }
+    else if(viewerActive && layers.length){ await rebuild(); }      // apply layer transforms
+    else { setViewStatus('Load a scene first.','warn'); return; }
+    await cloudShare({ephemeral:true});                              // public 24h link, no login, no local download
+  }catch(e){ hideLoading(); setViewStatus('View & Share failed: '+(e&&e.message||'unknown'),'err'); }
 });
+
+// download the 3D model (splat → .ksplat, mesh/compose → baked .glb) — lives on the stage
+async function downloadModel(){
+  try{
+    if(meshActive && mesh && ((mesh.objects&&mesh.objects.length) || mesh.sourceBytes)){
+      showLoading('Baking','one GLB');
+      const buf = (mesh.objects&&mesh.objects.length) ? await exportComposedGLB() : mesh.sourceBytes;
+      hideLoading();
+      const blob=new Blob([buf],{type:'model/gltf-binary'}); const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob); a.download=(mesh.sourceName||'composition.glb').replace(/\.(glb|gltf|fbx)$/i,'')+'.glb';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+      setViewStatus('Downloaded .glb ('+(buf.byteLength/1048576).toFixed(2)+' MB)','ok');
+    } else if(viewerActive && layers.length){
+      const vis=layers.filter(l=>!l.hidden && l.buffer); let n=0;
+      for(const l of vis){ try{ GaussianSplats3D.KSplatLoader.downloadFile(l.buffer, l.name.replace(/\.[^.]+$/,'')+'.ksplat'); n++; }catch(e){} }
+      setViewStatus('Downloaded '+n+' .ksplat file'+(n>1?'s':''),'ok');
+    } else setViewStatus('Load a scene first.','warn');
+  }catch(e){ hideLoading(); setViewStatus('Download failed: '+(e&&e.message||'unknown'),'err'); }
+}
+$('pillDownload') && $('pillDownload').addEventListener('click', downloadModel);
 $('viewUp').addEventListener('change',async()=>{ syncUpChips(); if(layers.length){ await rebuild(); frameScene(); } });
 
 function syncUpChips(){
