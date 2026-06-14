@@ -227,6 +227,19 @@
   .lib-card .lacts button:hover{color:var(--text);border-color:var(--accent-dim)}
   .lib-card .lacts button.del:hover{color:#ff9c9c;border-color:#5b2f2f}
   .lib-empty{font-family:var(--mono);font-size:11px;color:var(--faint);padding:10px 2px}
+  /* share action tiles */
+  .share-actions{display:flex;flex-direction:column;gap:8px;margin:4px 0}
+  .act-tile{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:11px 13px;border-radius:13px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);cursor:pointer;transition:transform .16s,border-color .16s,filter .16s;font-family:inherit}
+  .act-tile:hover{border-color:var(--accent-dim);transform:translateY(-1px)}
+  .act-tile:active{transform:translateY(0)}
+  .act-tile .ti{width:34px;height:34px;flex:0 0 34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;background:var(--raised);border:1px solid var(--border)}
+  .act-tile .tx{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .act-tile .tt{font-size:14px;font-weight:600;letter-spacing:.01em;line-height:1.1}
+  .act-tile .tc{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.02em}
+  .act-tile.primary{background:linear-gradient(135deg,var(--accent),#a45cf0);border-color:transparent;color:#180a26;box-shadow:0 6px 18px -8px var(--accent)}
+  .act-tile.primary .ti{background:rgba(255,255,255,.22);border-color:transparent}
+  .act-tile.primary .tc{color:rgba(24,10,38,.68)}
+  .act-tile.primary:hover{filter:brightness(1.04);transform:translateY(-1px)}
   .panel-toggle{position:absolute;top:14px;left:14px;z-index:13;font-family:var(--mono);font-size:12px;line-height:1;color:var(--text);background:rgba(15,18,25,.82);border:1px solid var(--border);height:34px;padding:0 13px;border-radius:9px;backdrop-filter:blur(7px);cursor:pointer;transition:.15s;display:none;align-items:center;justify-content:center;gap:7px}
   .panel-toggle:hover{border-color:var(--accent-dim)}
   /* model-viewer AR overlay */
@@ -529,8 +542,16 @@
       </div>
     </div>
 
-    <button class="btn" id="saveShare" style="display:none">👁 View &amp; Share</button>
-    <button class="btn ghost" id="saveLib" style="display:none">💾 Save to Library</button>
+    <div class="share-actions">
+      <button class="act-tile" id="saveShare" style="display:none">
+        <span class="ti">👁</span>
+        <span class="tx"><span class="tt">View &amp; Share</span><span class="tc">Public link · expires in 24h</span></span>
+      </button>
+      <button class="act-tile primary" id="saveLib" style="display:none">
+        <span class="ti">💾</span>
+        <span class="tx"><span class="tt">Save to Library</span><span class="tc">Permanent · kept in your account</span></span>
+      </button>
+    </div>
     <div class="library" id="libSection" style="display:none">
       <div class="lib-head">
         <span class="lib-title">◈ YOUR LIBRARY</span>
@@ -3600,7 +3621,7 @@ function renderLayerList(){
 function updateSaveShare(){
   const b=$('saveShare'); const sl=$('saveLib');
   const ok = (viewerActive && !meshActive && layers.length) || (meshActive && mesh && ((mesh.objects&&mesh.objects.length) || mesh.sourceBytes || mesh.usdzBytes));
-  if(b) b.style.display = ok ? '' : 'none';
+  if(b){ b.style.display = ok ? '' : 'none'; b.classList.toggle('primary', ok && !loggedIn()); }
   if(sl) sl.style.display = (ok && loggedIn()) ? '' : 'none';   // permanent save only for signed-in users
 }
 async function prepShareScene(label){
@@ -3827,12 +3848,32 @@ function libCard(row){
     + `<span class="fmt">${fmt}</span><span class="st ${st.cls}">${st.txt}</span></div>`
     + `<div class="lb"><div class="ln" title="${(row.name||'Untitled').replace(/"/g,'&quot;')}">${row.name||'Untitled'}</div>`
     + `<div class="lmeta">${stats.join(' · ')||'—'}<br>${fmtWhen(row.created_at)}</div>`
-    + `<div class="lacts"><button class="open">Open</button><button class="copy">Copy</button><button class="del">✕</button></div></div>`;
+    + `<div class="lacts"><button class="open">Open</button><button class="share">Share</button><button class="del">✕</button></div></div>`;
   const link=libShareLink(row.id);
   card.querySelector('.open').onclick=()=>window.open(link,'_blank');
-  card.querySelector('.copy').onclick=async(e)=>{ try{ await navigator.clipboard.writeText(link); e.target.textContent='✓'; setTimeout(()=>e.target.textContent='Copy',1200); }catch(_){ window.prompt('Copy link:',link); } };
+  card.querySelector('.share').onclick=(e)=>libShare(row,card,e.target);
   card.querySelector('.del').onclick=()=>libDelete(row,card);
   return card;
+}
+async function libShare(row,card,btn){
+  const link=libShareLink(row.id);
+  try{
+    if(row.expires_at){                       // make the link permanent before sharing
+      await ensureFreshToken();
+      const r=await fetch(`${SUPA_URL}/rest/v1/shares?id=eq.${encodeURIComponent(row.id)}`,{
+        method:'PATCH', headers:{...authHeaders(),'Content-Type':'application/json'},
+        body:JSON.stringify({expires_at:null}) });
+      if(r.ok){ row.expires_at=null; const st=card&&card.querySelector('.st'); if(st){ st.className='st live'; st.textContent='Live'; } }
+      else setViewStatus('Sharing current link — could not make it permanent (run the "owner update shares" policy).','warn');
+    }
+    if(navigator.share){
+      try{ await navigator.share({title:row.name||'Ply.er scene', text:'View this in 3D / AR', url:link}); }
+      catch(e){ if(e&&e.name==='AbortError') return; throw e; }
+    } else {
+      try{ await navigator.clipboard.writeText(link); if(btn){ btn.textContent='✓'; setTimeout(()=>btn.textContent='Share',1200);} setViewStatus('Permanent link copied.','ok'); }
+      catch(_){ window.prompt('Copy permanent link:',link); }
+    }
+  }catch(e){ setViewStatus('Share failed: '+(e&&e.message||'unknown'),'err'); }
 }
 async function libDelete(row,card){
   if(!confirm('Delete "'+(row.name||'this asset')+'" from your library? This removes the share link permanently.')) return;
