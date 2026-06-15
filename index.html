@@ -3523,6 +3523,25 @@ async function rebuild(){
   arVisible();
 }
 
+function applyLayerTransformsLive(){
+  if(!viewer || !viewer.splatMesh) return false;
+  try{
+    const visible=layers.filter(l=>!l.hidden);
+    const n = viewer.getSceneCount ? viewer.getSceneCount() : visible.length;
+    for(let i=0;i<visible.length && i<n;i++){
+      const sc=viewer.getSplatScene(i); if(!sc) continue;
+      const l=visible[i];
+      sc.position.fromArray(l.pos);
+      sc.quaternion.fromArray(eulerToQuat(l.rot));
+      sc.scale.set(l.scale,l.scale,l.scale);
+    }
+    viewer.splatMesh.updateTransforms();
+    return true;
+  }catch(e){ return false; }
+}
+let _liveRAF=0;
+function scheduleLiveApply(){ if(_liveRAF) return; _liveRAF=requestAnimationFrame(()=>{ _liveRAF=0; if(!applyLayerTransformsLive()) rebuild(); }); }
+
 function sampleCenters(budget){
   const visible=layers.filter(l=>!l.hidden);
   if(!visible.length) return null;
@@ -3672,12 +3691,14 @@ function renderLayerList(){
     });
     row.querySelector('.x').addEventListener('click',async()=>{ layers=layers.filter(x=>x.id!==l.id); renderLayerList(); await rebuild(); if(!layers.length) setViewStatus('All layers cleared.'); else setViewStatus(layers.length+' layer(s) · '+fmtNum(totalSplats())+' splats','ok'); });
 
+    let _alphaT=0;
     row.querySelectorAll('input[data-k]').forEach(inp=>{
       inp.addEventListener('input',e=>{
         const k=inp.dataset.k;
-        if(k==='pos'||k==='rot'){ l[k][+inp.dataset.i]=parseFloat(inp.value)||0; }
-        else if(k==='scale'){ l.scale=parseFloat(inp.value)||1; }
-        else if(k==='alpha'){ l.alpha=parseInt(inp.value,10); row.querySelector('[data-alphaval]').textContent=l.alpha; }
+        if(k==='pos'||k==='rot'){ l[k][+inp.dataset.i]=parseFloat(inp.value)||0; scheduleLiveApply(); }
+        else if(k==='scale'){ l.scale=parseFloat(inp.value)||1; scheduleLiveApply(); }
+        else if(k==='alpha'){ l.alpha=parseInt(inp.value,10); row.querySelector('[data-alphaval]').textContent=l.alpha;
+          clearTimeout(_alphaT); _alphaT=setTimeout(()=>{ if(viewerActive) rebuild(); }, 280); }   // alpha cutoff needs a re-parse
       });
     });
     list.appendChild(row);
