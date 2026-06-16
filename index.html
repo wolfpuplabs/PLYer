@@ -259,7 +259,7 @@
   body.shared:not(.shared-open) .panel-toggle,body.shared:not(.shared-open) .drawer-close{display:none!important}
   body.shared:not(.shared-open) .stage{order:0;position:absolute;inset:0;height:100dvh;min-height:0;width:100%}
   body.shared .stage-mark{display:none}
-  .shared-info{position:absolute;left:16px;bottom:16px;z-index:12;display:none;flex-direction:column;gap:3px;pointer-events:none}
+  .shared-info{position:absolute;left:16px;bottom:92px;z-index:12;display:none;flex-direction:column;gap:3px;pointer-events:none;max-width:62vw}
   body.shared .shared-info{display:flex}
   .shared-info .si-logo{font-family:var(--display,'Space Grotesk',sans-serif);font-weight:700;font-size:30px;line-height:1;letter-spacing:-.01em;color:#fff;text-decoration:none;pointer-events:auto;text-shadow:0 2px 20px rgba(0,0,0,.6)}
   .shared-info .si-logo .dot{color:var(--accent)}
@@ -493,6 +493,7 @@
           </div>
           <div class="hint">Spatial bucketing for compression. Defaults match the reference tool.</div>
         </div>
+        <label class="dl-opt" id="convCapWrap" style="margin:4px 2px 8px"><input type="checkbox" id="convCap49"> Cap output ≤ 49 MB (cloud-safe)</label>
         <button class="btn" id="convRun" disabled>Convert &amp; download .ksplat</button>
         <div class="status" id="convStatus">Drop a file to begin.</div>
       </div>
@@ -3478,24 +3479,28 @@ async function rebuild(){
   if(!didAutoLevel){ autoLevel(); didAutoLevel=true; }
 
   const up=parseVec3($('viewUp').value,[0,-1,0]);
+  let qUp=null;
+  if(arPrep){   // in AR the world up is +Y; rotate the splat so the chosen "up" points up for real
+    const u=new THREE.Vector3().fromArray(up); if(u.lengthSq()>0) u.normalize(); else u.set(0,-1,0);
+    qUp=new THREE.Quaternion().setFromUnitVectors(u, new THREE.Vector3(0,1,0));
+  }
   showLoading(arPrep?'Preparing AR':'Building scene', arPrep?'tap START AR':'arranging splats'); emptyState.style.display='none';
 
   const ARMODE=(GaussianSplats3D.WebXRMode&&GaussianSplats3D.WebXRMode.AR)||2;
   viewer=new GaussianSplats3D.Viewer({
     rootElement:host, sharedMemoryForWorkers:false, useBuiltInControls:!arPrep,
-    cameraUp:up, initialCameraPosition:[-1,-4,6], initialCameraLookAt:[0,1,0],
+    cameraUp: arPrep?[0,1,0]:up, initialCameraPosition:[-1,-4,6], initialCameraLookAt:[0,1,0],
     sphericalHarmonicsDegree:shCache,
     webXRMode: arPrep?ARMODE:(GaussianSplats3D.WebXRMode?GaussianSplats3D.WebXRMode.None:0),
     webXRSessionInit: arPrep?{optionalFeatures:['local-floor','bounded-floor','hand-tracking']}:{}
   });
 
   const buffers=visible.map(l=>l.buffer);
-  const opts=visible.map(l=>({
-    position:l.pos,
-    rotation:eulerToQuat(l.rot),
-    scale:[l.scale,l.scale,l.scale],
-    splatAlphaRemovalThreshold:l.alpha
-  }));
+  const opts=visible.map(l=>{
+    let rotArr=eulerToQuat(l.rot);
+    if(qUp){ const q=qUp.clone().multiply(new THREE.Quaternion().fromArray(rotArr)); rotArr=[q.x,q.y,q.z,q.w]; }
+    return { position:l.pos, rotation:rotArr, scale:[l.scale,l.scale,l.scale], splatAlphaRemovalThreshold:l.alpha };
+  });
 
   await viewer.addSplatBuffers(buffers, opts, true, false, false, false, false);
   viewer.start();
@@ -4527,8 +4532,25 @@ $('convRun').addEventListener('click',async()=>{
       : GaussianSplats3D.SplatParser.parseStandardSplatToUncompressedSplatArray(buffer);
     const inCount=splatArray.splatCount; log(fmtNum(inCount)+' splats parsed','g');
     log('packing → .ksplat  (compression '+compression+', SH '+sh+')…');
-    const generator=GaussianSplats3D.SplatBufferGenerator.getStandardGenerator(alpha,compression,0,new THREE.Vector3(0,0,0),blockSize,bucketSize);
-    const splatBuffer=generator.generateFromUncompressedSplatArray(splatArray);
+    const pack=(arr,comp)=>GaussianSplats3D.SplatBufferGenerator.getStandardGenerator(alpha,comp,0,new THREE.Vector3(0,0,0),blockSize,bucketSize).generateFromUncompressedSplatArray(arr);
+    let usedComp=compression, usedSH=sh;
+    let splatBuffer=pack(splatArray, usedComp);
+    const CAP=49*1024*1024;
+    if($('convCap49') && $('convCap49').checked && splatBuffer.bufferData.byteLength>CAP){
+      log('over 49 MB ('+fmtBytes(splatBuffer.bufferData.byteLength)+') — tightening…','a');
+      if(usedComp<2){ usedComp=2; log('→ 8-bit compression'); splatBuffer=pack(splatArray,2); }
+      if(splatBuffer.bufferData.byteLength>CAP && usedSH>0){       // drop spherical harmonics (re-parse without SH)
+        usedSH=0; log('→ dropping spherical harmonics (SH 0)');
+        splatArray = format===SF.Ply
+          ? GaussianSplats3D.PlyParser.parseToUncompressedSplatArray(buffer,0)
+          : GaussianSplats3D.SplatParser.parseStandardSplatToUncompressedSplatArray(buffer);
+        splatBuffer=pack(splatArray,2);
+      }
+      if(splatBuffer.bufferData.byteLength>CAP){
+        log('still '+fmtBytes(splatBuffer.bufferData.byteLength)+' — too many splats to fit under 49 MB; reduce splat count.','e');
+        setConvStatus('Could not reach 49 MB — output is '+fmtBytes(splatBuffer.bufferData.byteLength)+'. Fewer splats needed.','warn');
+      } else log('under 49 MB now (comp '+usedComp+', SH '+usedSH+')','g');
+    }
     const outCount=splatBuffer.getSplatCount(), outBytes=splatBuffer.bufferData.byteLength, inBytes=convFile.size;
     const pct=(1-outBytes/inBytes)*100;
     $('stIn').textContent=fmtNum(inCount); $('stOut').textContent=fmtNum(outCount);
