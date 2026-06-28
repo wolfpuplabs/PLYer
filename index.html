@@ -577,6 +577,7 @@
         <span class="tx"><span class="tt">Save to Library</span><span class="tc">Permanent · kept in your account</span></span>
       </button>
       <label class="dl-opt" id="dlOpt" style="display:none"><input type="checkbox" id="shareAllowDl"> Allow viewers to download this asset</label>
+      <label class="dl-opt" id="viewOpt" style="display:none"><input type="checkbox" id="shareSaveView" checked> Save current camera angle &amp; orientation</label>
       <label class="dl-opt" id="editOpt" style="display:none"><input type="checkbox" id="shareEditable" checked> Save as editable (keep individual objects)</label>
     </div>
     <div class="library" id="libSection" style="display:none">
@@ -3717,6 +3718,7 @@ function updateSaveShare(){
   if(sl) sl.style.display = (ok && loggedIn()) ? '' : 'none';   // permanent save only for signed-in users
   const dl=$('dlOpt'); if(dl) dl.style.display = ok ? 'flex' : 'none';
   const eo=$('editOpt'); if(eo) eo.style.display = (ok && meshActive && mesh && mesh.objects && mesh.objects.length>1) ? 'flex' : 'none';
+  const vo=$('viewOpt'); if(vo) vo.style.display = (ok && viewerActive && !meshActive) ? 'flex' : 'none';
 }
 async function prepShareScene(label){
   if(meshActive && mesh && mesh.objects && mesh.objects.length){ showLoading('Baking','one GLB'); await exportComposedGLB(); hideLoading(); return true; }
@@ -4154,19 +4156,23 @@ async function cloudShare(opts){
   await ensureFreshToken();
   const H=authHeaders();
   let bytes=art.bytes, ext=art.ext, path=uuid()+'.'+ext;
-  showLoading('Uploading to cloud', art.name+' · '+mb(bytes)+' MB');
+  const CAP=49*1024*1024;
   try{
-    let up=await putObject(path, bytes, H);
-    // too big? for splats, shrink to 8-bit and retry once (often halves the size)
-    if(up.status===413 && art.kind==='splat' && art.layer && art.layer.file){
-      showLoading('Recompressing to fit','8-bit KSPLAT');
-      try{
-        const small=await bufferFromFile(art.layer.file, shCache, 2);
-        bytes=small.bufferData; ext='ksplat'; path=uuid()+'.ksplat';
-        showLoading('Uploading to cloud', art.name+' · '+mb(bytes)+' MB');
-        up=await putObject(path, bytes, H);
-      }catch(e){ /* keep original 413 */ }
+    // splats over the cloud limit: shrink before uploading (only possible from a PLY/SPLAT source)
+    if(art.kind==='splat' && bytes.byteLength>CAP && art.layer && art.layer.file){
+      const sf=formatFromName(art.layer.file.name);
+      if(sf===SF.Ply || sf===SF.Splat){
+        showLoading('Shrinking to fit cloud','8-bit KSPLAT');
+        try{
+          let small=await bufferFromFile(art.layer.file, shCache, 2);
+          if(small.bufferData.byteLength>CAP && shCache>0){ showLoading('Shrinking to fit cloud','dropping SH'); small=await bufferFromFile(art.layer.file, 0, 2); }
+          if(small.bufferData.byteLength<=CAP){ bytes=small.bufferData; ext='ksplat'; path=uuid()+'.ksplat'; }
+        }catch(e){}
+      }
     }
+    showLoading('Uploading to cloud', art.name+' · '+mb(bytes)+' MB');
+    if(art.kind==='splat' && bytes.byteLength>CAP) throw new Error('TOO_BIG:'+mb(bytes));   // .ksplat source can't be re-shrunk here
+    let up=await putObject(path, bytes, H);
     if(!up.ok){
       const t=await up.text();
       if(up.status===413 || /too large|exceeded/i.test(t)) throw new Error('TOO_BIG:'+mb(bytes));
@@ -4177,7 +4183,8 @@ async function cloudShare(opts){
     // record metadata (gives a short ?share=<id> link); fall back to a direct URL link if the table isn't set up
     let link;
     const xfLayer = art.layer ? {pos:art.layer.pos, rot:art.layer.rot, scale:art.layer.scale, alpha:art.layer.alpha} : null;
-    const meta = { up: $('viewUp').value, xf: xfLayer, cam: captureCam(),
+    const saveView = !($('shareSaveView') && !$('shareSaveView').checked);
+    const meta = { up: $('viewUp').value, xf: xfLayer, cam: saveView?captureCam():null,
                    thumb: (captureThumb(256)||null), bytes: bytes.byteLength,
                    count: (art.layer&&art.layer.count)||null, kind: art.kind||ext,
                    allowDownload: !!($('shareAllowDl')&&$('shareAllowDl').checked) };
@@ -4224,7 +4231,7 @@ async function cloudShare(opts){
   }catch(err){
     hideLoading(); console.error(err);
     let msg=err&&err.message?err.message:'unknown';
-    if(msg.indexOf('TOO_BIG:')===0){ msg='Scene is '+msg.slice(8)+' MB — over your Storage limit. In Supabase → Storage → Settings raise "Global file size limit" (free tier max 50 MB), or share a lighter scene. Pro plan needed for >50 MB.'; }
+    if(msg.indexOf('TOO_BIG:')===0){ msg='Scene is '+msg.slice(8)+' MB — over the 50 MB cloud limit. For a .ksplat this big, re-convert the original .ply/.splat in the Convert tab with "Cap output ≤ 49 MB" first, then load & share that. (Or reduce splats.)'; }
     else if(/bucket not found/i.test(msg)) msg='Storage bucket "splats" not found — create a public bucket named "splats" in Supabase → Storage, then retry.';
     else if(/row-level security|violates|403|401/i.test(msg)) msg='Permission denied — run the supabase-setup.sql policies in your Supabase SQL editor, then retry.';
     setViewStatus('Cloud share failed: '+msg,'err');
@@ -4547,9 +4554,21 @@ $('convRun').addEventListener('click',async()=>{
         splatBuffer=pack(splatArray,2);
       }
       if(splatBuffer.bufferData.byteLength>CAP){
-        log('still '+fmtBytes(splatBuffer.bufferData.byteLength)+' — too many splats to fit under 49 MB; reduce splat count.','e');
-        setConvStatus('Could not reach 49 MB — output is '+fmtBytes(splatBuffer.bufferData.byteLength)+'. Fewer splats needed.','warn');
-      } else log('under 49 MB now (comp '+usedComp+', SH '+usedSH+')','g');
+        // last resort: drop splats (keep every Nth) until it fits — operates on parser's own splat entries (safe)
+        let keep=Math.min(0.95, CAP/splatBuffer.bufferData.byteLength);
+        for(let tries=0; tries<6 && splatBuffer.bufferData.byteLength>CAP; tries++){
+          const step=Math.max(2, Math.round(1/keep));
+          const ds=new splatArray.constructor(0);
+          for(let i=0;i<splatArray.splats.length;i+=step) ds.addSplat(splatArray.splats[i]);
+          log('→ reducing splats: '+fmtNum(ds.splatCount)+' kept (1/'+step+')');
+          splatBuffer=pack(ds,2);
+          keep*=0.85;
+        }
+      }
+      if(splatBuffer.bufferData.byteLength>CAP){
+        log('still '+fmtBytes(splatBuffer.bufferData.byteLength)+' — could not reach 49 MB.','e');
+        setConvStatus('Could not reach 49 MB — output is '+fmtBytes(splatBuffer.bufferData.byteLength)+'.','warn');
+      } else log('under 49 MB now (comp '+usedComp+', SH '+usedSH+', '+fmtNum(splatBuffer.getSplatCount())+' splats)','g');
     }
     const outCount=splatBuffer.getSplatCount(), outBytes=splatBuffer.bufferData.byteLength, inBytes=convFile.size;
     const pct=(1-outBytes/inBytes)*100;
